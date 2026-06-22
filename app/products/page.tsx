@@ -243,7 +243,7 @@ export default function ProductsPage() {
       transition: {
         delay: Math.min(i * 0.05, 0.5),
         duration: 0.3,
-        ease: 'easeOut',
+        ease: 'easeOut' as const,
       },
     }),
   };
