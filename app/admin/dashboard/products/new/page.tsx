@@ -33,7 +33,7 @@ export default function NewProductPage() {
     description: '',
     price: '',
     original_price: '',
-    category_id: null,
+    category_id: null as number | null,
     stock: '0',
     is_active: true,
     is_featured: false,
@@ -433,7 +433,7 @@ export default function NewProductPage() {
               </label>
               <select
                 value={formData.category_id ?? ''}
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value || null })}
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value ? Number(e.target.value) || null : null })}
                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Select a category</option>
