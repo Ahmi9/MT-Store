@@ -359,7 +359,7 @@ export default function HomePage() {
           .eq('is_active', true);
 
         const counts: Record<string, number> = {};
-        for (const cat of categoriesRes.data) {
+        for (const cat of categoriesRes.data ?? []) {
           const subcategoryIds = allCategoriesData.data
             ?.filter((c: Category) => c.parent_id === cat.id)
             .map((c: Category) => c.id) || [];
