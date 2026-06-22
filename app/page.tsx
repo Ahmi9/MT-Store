@@ -358,11 +358,12 @@ export default function HomePage() {
           .select('*')
           .eq('is_active', true);
 
+        const allCategories: Category[] = allCategoriesData.data ?? [];
         const counts: Record<string, number> = {};
-        for (const cat of categoriesRes.data ?? []) {
-          const subcategoryIds = allCategoriesData.data
-            ?.filter((c: Category) => c.parent_id === cat.id)
-            .map((c: Category) => c.id) || [];
+        for (const cat of allCategories) {
+          const subcategoryIds = allCategories
+            .filter((c: Category) => c.parent_id === cat.id)
+            .map((c: Category) => c.id);
           const allCategoryIds = [cat.id, ...subcategoryIds];
           const { count } = await publicClient
             .from('products')
