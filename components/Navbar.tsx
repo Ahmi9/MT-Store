@@ -6,11 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
 
 interface Category {
-  id: number;
+  id: string | number;
+  parent_id?: string | number | null;
   name: string;
-  slug: string;
-  parent_id: number | null;
-  is_active: boolean;
+  [key: string]: any;
 }
 
 interface SiteSettings {
@@ -76,9 +75,9 @@ export default function Navbar() {
   const [storeName, setStoreName] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [openDropdown, setOpenDropdown] = useState<number | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedCategory, setExpandedCategory] = useState<number | null>(null);
+  const [expandedCategory, setExpandedCategory] = useState<string | number | null>(null);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -123,11 +122,11 @@ export default function Navbar() {
 
   const topLevelCategories = categories.filter(c => c.parent_id === null);
 
-  const getSubcategories = (parentId: number) => {
+  const getSubcategories = (parentId: string | number) => {
     return categories.filter(c => c.parent_id === parentId);
   };
 
-  const hasActiveSubcategories = (parentId: number) => {
+  const hasActiveSubcategories = (parentId: string | number) => {
     return categories.some(c => c.parent_id === parentId && c.is_active);
   };
 

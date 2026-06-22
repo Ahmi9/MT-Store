@@ -24,11 +24,10 @@ interface Product {
 }
 
 interface Category {
-  id: number;
+  id: string | number;
+  parent_id?: string | number | null;
   name: string;
-  slug: string;
-  parent_id: number | null;
-  is_active: boolean;
+  [key: string]: any;
 }
 
 function SkeletonProductCard() {
@@ -120,7 +119,7 @@ function ProductsPageContent() {
       const res = await query;
 
       if (!res.error && res.data) {
-        const categoryMap: Record<number, string> = {};
+        const categoryMap: Record<string | number, string> = {};
         categoriesData?.forEach((c: Category) => {
           categoryMap[c.id] = c.name;
         });

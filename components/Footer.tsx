@@ -11,11 +11,10 @@ interface SiteSettings {
 }
 
 interface Category {
-  id: number;
+  id: string | number;
+  parent_id?: string | number | null;
   name: string;
-  slug: string;
-  parent_id: number | null;
-  is_active: boolean;
+  [key: string]: any;
 }
 
 function WhatsAppIcon({ className }: { className?: string }) {

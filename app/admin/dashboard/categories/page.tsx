@@ -4,18 +4,16 @@ import { useEffect, useState, Fragment } from 'react';
 import { publicClient } from '@/lib/supabase';
 
 interface Category {
-  id: number;
+  id: string | number;
+  parent_id: string | number | null;
   name: string;
-  slug: string;
-  parent_id: number | null;
-  display_order: number;
-  is_active: boolean;
+  [key: string]: any;
 }
 
 interface CategoryFormData {
   name: string;
   slug: string;
-  parent_id: number | null;
+  parent_id: string | number | null;
   display_order: number;
   is_active: boolean;
 }
@@ -76,7 +74,7 @@ export default function CategoriesPage() {
       display_order: category.display_order,
       is_active: category.is_active,
     });
-    setEditingId(category.id);
+    setEditingId(category.id as number);
     setShowForm(true);
   };
 
@@ -127,7 +125,7 @@ export default function CategoriesPage() {
     fetchCategories();
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string | number) => {
     const category = categories.find((c) => c.id === id);
     const hasSubcategories = categories.some((c) => c.parent_id === id);
 
@@ -138,9 +136,9 @@ export default function CategoriesPage() {
 
     if (!confirm(confirmMessage)) return;
 
-    const idsToDelete = [id];
+    const idsToDelete: (string | number)[] = [id];
     if (hasSubcategories) {
-      const subIds = categories.filter((c) => c.parent_id === id).map((c) => c.id);
+      const subIds = categories.filter((c) => c.parent_id === id).map((c) => c.id as string | number);
       idsToDelete.push(...subIds);
     }
 
@@ -151,7 +149,7 @@ export default function CategoriesPage() {
     fetchCategories();
   };
 
-  const handleToggleActive = async (id: number, currentActive: boolean) => {
+  const handleToggleActive = async (id: string | number, currentActive: boolean) => {
     await publicClient
       .from('categories')
       .update({ is_active: !currentActive })
@@ -162,13 +160,13 @@ export default function CategoriesPage() {
 
   const topLevelCategories = categories.filter((c) => c.parent_id === null);
 
-  const getSubcategories = (parentId: number) => {
+  const getSubcategories = (parentId: string | number) => {
     return categories.filter((c) => c.parent_id === parentId);
   };
 
   const topLevelOptions = categories.filter((c) => c.parent_id === null);
 
-  const handleOpenAddSubcategory = (parentId: number) => {
+  const handleOpenAddSubcategory = (parentId: string | number) => {
     setFormData({ name: '', slug: '', parent_id: parentId, display_order: 0, is_active: true });
     setEditingId(null);
     setShowForm(true);
