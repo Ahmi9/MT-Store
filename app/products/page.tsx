@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams, usePathname } from 'next/navigation';
@@ -74,7 +74,7 @@ function StarIcon({ filled, className }: { filled: boolean; className?: string }
   );
 }
 
-export default function ProductsPage() {
+function ProductsPageContent() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const categorySlug = searchParams.get('category');
@@ -400,5 +400,30 @@ export default function ProductsPage() {
         onAdd={handleVariantAdd}
       />
     </div>
+  );
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-white">
+      <AnnouncementBar />
+      <Navbar />
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+            <SkeletonProductCard key={i} />
+          ))}
+        </div>
+      </div>
+      <Footer />
+    </div>
+  );
+}
+
+export default function ProductsPage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ProductsPageContent />
+    </Suspense>
   );
 }
