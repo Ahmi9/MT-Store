@@ -351,29 +351,29 @@ export default function HomePage() {
       } else {
         console.log('[Home Page] categories fetch error or no data:', categoriesRes.error, categoriesRes.data);
         setCategories([]);
-
-        const allCategoriesData = await publicClient
-          .from('categories')
-          .select('*')
-          .eq('is_active', true);
-
-        const categories = (categoriesRes.data ?? []) as Category[];
-        const allCategories = (allCategoriesData.data ?? []) as Category[];
-        const counts: Record<string, number> = {};
-        for (const cat of categories) {
-          const subcategoryIds = allCategories
-            .filter((c) => c.parent_id === cat.id)
-            .map((c) => c.id) || [];
-          const allCategoryIds = [cat.id, ...subcategoryIds];
-          const { count } = await publicClient
-            .from('products')
-            .select('id', { count: 'exact' })
-            .in('category_id', allCategoryIds)
-            .eq('is_active', true);
-          counts[cat.slug] = count || 0;
-        }
-        setCategoryCounts(counts);
       }
+
+      const allCategoriesData = await publicClient
+        .from('categories')
+        .select('*')
+        .eq('is_active', true);
+
+      const categories = (categoriesRes.data ?? []) as Category[];
+      const allCategories = (allCategoriesData.data ?? []) as Category[];
+      const counts: Record<string, number> = {};
+      for (const cat of categories) {
+        const subcategoryIds = allCategories
+          .filter((c) => c.parent_id === cat.id)
+          .map((c) => c.id) || [];
+        const allCategoryIds = [cat.id, ...subcategoryIds];
+        const { count } = await publicClient
+          .from('products')
+          .select('id', { count: 'exact' })
+          .in('category_id', allCategoryIds)
+          .eq('is_active', true);
+        counts[cat.slug] = count || 0;
+      }
+      setCategoryCounts(counts);
 
       if (!settingsRes.error && settingsRes.data) {
         setSettings(settingsRes.data as SiteSettings);
