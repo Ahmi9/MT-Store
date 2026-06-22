@@ -240,9 +240,7 @@ export default function DashboardPage() {
       setStats({
         todayOrders: todayOrdersRes.count || 0,
         pendingOrders: pendingOrdersRes.count || 0,
-        totalRevenue: revenueRes.data 
-        ? revenueRes.data.reduce((sum: number, row: any) => sum + parseFloat(row.total || 0), 0)
-        : revenueRes.reduce ? revenueRes.reduce((sum: number, row: any) => sum + parseFloat(row.total || 0), 0) : 0,
+        totalRevenue: (revenueRes.data ?? []).reduce((sum: number, row: any) => sum + parseFloat(row.total || 0), 0),
         deliveredOrders: deliveredOrdersRes.count || 0,
         codOrders: codOrdersRes.count || 0,
         advanceOrders: advanceOrdersRes.count || 0,
