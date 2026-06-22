@@ -52,6 +52,18 @@ interface PaymentMethod {
   iban: string | null;
 }
 
+interface SiteSettings {
+  id: number;
+  store_name: string | null;
+  whatsapp_number: string | null;
+  announcement_bar_text: string | null;
+  announcement_bar_active: boolean;
+  hero_title: string | null;
+  hero_subtitle: string | null;
+  advance_payment_discount_enabled: boolean;
+  advance_payment_discount_amount: number;
+}
+
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
 
