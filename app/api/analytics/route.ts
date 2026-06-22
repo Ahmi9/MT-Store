@@ -1,13 +1,10 @@
 import { GoogleAuth } from 'google-auth-library';
 import { NextResponse } from 'next/server';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const PROPERTY_ID = '542345483';
-const CREDENTIALS_PATH = join(process.cwd(), 'ga4-credentials.json');
 
 interface GA4Response {
   activeUsersNow: number;
@@ -32,10 +29,12 @@ function getErrorMessage(err: unknown): string {
 async function getAuthenticatedClient() {
   let credentials;
   try {
-    credentials = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf8'));
+    const credsJson = process.env.GA4_CREDENTIALS_JSON;
+    if (!credsJson) throw new Error('GA4_CREDENTIALS_JSON env variable is not set');
+    credentials = JSON.parse(credsJson);
   } catch (err) {
     const message = getErrorMessage(err);
-    console.error('Error reading credentials file:', message);
+    console.error('Error reading credentials:', message);
     throw { step: 'readCredentials', error: message };
   }
 
