@@ -1,42 +1,79 @@
 'use client';
 
-import { useEffect, useState, Fragment } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  IconAction,
+  PageHeader,
+  Pill,
+  Row,
+  RowActions,
+  SearchInput,
+  Sheet,
+  Table,
+  TableCard,
+  TableSkeleton,
+  Td,
+  Th,
+  Toggle,
+  useAdminToast,
+} from '@/components/admin/ui';
+import { PencilIcon, PlusIcon, TagIcon, TrashIcon } from '@/components/store/icons';
 
 interface Category {
-  id: string | number;
-  parent_id: string | number | null;
+  id: string;
+  parent_id: string | null;
   name: string;
-  [key: string]: any;
+  slug: string;
+  display_order: number;
+  is_active: boolean;
 }
 
 interface CategoryFormData {
   name: string;
   slug: string;
-  parent_id: string | number | null;
+  parent_id: string | null;
   display_order: number;
   is_active: boolean;
 }
 
+const EMPTY_FORM: CategoryFormData = { name: '', slug: '', parent_id: null, display_order: 0, is_active: true };
+
+const generateSlug = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
 export default function CategoriesPage() {
+  const notify = useAdminToast();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [productCounts, setProductCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [formData, setFormData] = useState<CategoryFormData>({
-    name: '',
-    slug: '',
-    parent_id: null,
-    display_order: 0,
-    is_active: true,
-  });
+  const [search, setSearch] = useState('');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<CategoryFormData>(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<Category | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const fetchCategories = async () => {
-    const { data } = await publicClient
-      .from('categories')
-      .select('*')
-      .order('display_order', { ascending: true });
+    const [{ data }, { data: products }] = await Promise.all([
+      publicClient.from('categories').select('*').order('display_order', { ascending: true }),
+      publicClient.from('products').select('category_id'),
+    ]);
     if (data) setCategories(data as Category[]);
+    const counts: Record<string, number> = {};
+    for (const p of (products ?? []) as { category_id: string | null }[]) {
+      if (p.category_id) counts[p.category_id] = (counts[p.category_id] ?? 0) + 1;
+    }
+    setProductCounts(counts);
     setLoading(false);
   };
 
@@ -44,198 +81,217 @@ export default function CategoriesPage() {
     fetchCategories();
   }, []);
 
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+  const openSheet = (data: CategoryFormData, id: string | null) => {
+    setFormData(data);
+    setEditingId(id);
+    setSheetOpen(true);
   };
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const name = e.target.value;
-    setFormData((prev) => ({
-      ...prev,
-      name,
-      slug: editingId ? prev.slug : generateSlug(name),
-    }));
-  };
-
-  const handleOpenAdd = () => {
-    setFormData({ name: '', slug: '', parent_id: null, display_order: 0, is_active: true });
-    setEditingId(null);
-    setShowForm(true);
-  };
-
-  const handleOpenEdit = (category: Category) => {
-    setFormData({
-      name: category.name,
-      slug: category.slug,
-      parent_id: category.parent_id,
-      display_order: category.display_order,
-      is_active: category.is_active,
-    });
-    setEditingId(category.id as number);
-    setShowForm(true);
-  };
-
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingId(null);
-    setFormData({ name: '', slug: '', parent_id: null, display_order: 0, is_active: true });
-  };
+  const handleOpenEdit = (category: Category) =>
+    openSheet(
+      {
+        name: category.name,
+        slug: category.slug,
+        parent_id: category.parent_id,
+        display_order: category.display_order,
+        is_active: category.is_active,
+      },
+      category.id
+    );
 
   const handleSave = async () => {
-    if (!formData.name || !formData.slug) {
-      alert('Please fill in Name and Slug');
+    if (!formData.name.trim() || !formData.slug.trim()) {
+      notify('Please fill in name and slug', 'error');
       return;
     }
+    setSaving(true);
+    const payload = {
+      name: formData.name.trim(),
+      slug: formData.slug.trim(),
+      parent_id: formData.parent_id,
+      display_order: formData.display_order,
+      is_active: formData.is_active,
+    };
+    const { error } = editingId
+      ? await publicClient.from('categories').update(payload).eq('id', editingId)
+      : await publicClient.from('categories').insert(payload);
+    setSaving(false);
 
-    if (editingId) {
-      const { error } = await publicClient
-        .from('categories')
-        .update({
-          name: formData.name,
-          slug: formData.slug,
-          parent_id: formData.parent_id,
-          display_order: formData.display_order,
-          is_active: formData.is_active,
-        })
-        .eq('id', editingId);
-
-      if (error) {
-        alert('Error updating category: ' + error.message);
-        return;
-      }
-    } else {
-      const { error } = await publicClient.from('categories').insert({
-        name: formData.name,
-        slug: formData.slug,
-        parent_id: formData.parent_id,
-        display_order: formData.display_order,
-        is_active: formData.is_active,
-      });
-
-      if (error) {
-        alert('Error adding category: ' + error.message);
-        return;
-      }
+    if (error) {
+      notify(`Couldn’t save category: ${error.message}`, 'error');
+      return;
     }
-
-    handleCancel();
+    notify(editingId ? 'Category updated' : 'Category added');
+    setSheetOpen(false);
     fetchCategories();
   };
 
-  const handleDelete = async (id: string | number) => {
-    const category = categories.find((c) => c.id === id);
-    const hasSubcategories = categories.some((c) => c.parent_id === id);
-
-    let confirmMessage = 'Are you sure you want to delete this category?';
-    if (hasSubcategories) {
-      confirmMessage = 'This will also delete its subcategories. Are you sure you want to delete this category?';
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    const ids = [deleting.id, ...categories.filter((c) => c.parent_id === deleting.id).map((c) => c.id)];
+    // children first, so the parent isn't blocked by them
+    let failed: string | null = null;
+    for (const catId of ids.reverse()) {
+      const { error } = await publicClient.from('categories').delete().eq('id', catId);
+      if (error) failed = error.message;
     }
-
-    if (!confirm(confirmMessage)) return;
-
-    const idsToDelete: (string | number)[] = [id];
-    if (hasSubcategories) {
-      const subIds = categories.filter((c) => c.parent_id === id).map((c) => c.id as string | number);
-      idsToDelete.push(...subIds);
-    }
-
-    for (const catId of idsToDelete) {
-      await publicClient.from('categories').delete().eq('id', catId);
-    }
-
+    setDeleteBusy(false);
+    setDeleting(null);
+    notify(failed ? `Couldn’t delete everything: ${failed}` : 'Category deleted', failed ? 'error' : 'success');
     fetchCategories();
   };
 
-  const handleToggleActive = async (id: string | number, currentActive: boolean) => {
-    await publicClient
-      .from('categories')
-      .update({ is_active: !currentActive })
-      .eq('id', id);
-
-    fetchCategories();
+  const handleToggleActive = async (category: Category) => {
+    setCategories((list) => list.map((c) => (c.id === category.id ? { ...c, is_active: !c.is_active } : c)));
+    const { error } = await publicClient.from('categories').update({ is_active: !category.is_active }).eq('id', category.id);
+    if (error) {
+      notify(`Couldn’t update: ${error.message}`, 'error');
+      fetchCategories();
+    }
   };
 
-  const topLevelCategories = categories.filter((c) => c.parent_id === null);
+  const topLevel = categories.filter((c) => c.parent_id === null);
+  const childrenOf = (id: string) => categories.filter((c) => c.parent_id === id);
 
-  const getSubcategories = (parentId: string | number) => {
-    return categories.filter((c) => c.parent_id === parentId);
-  };
+  const visibleTop = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return topLevel;
+    return topLevel.filter((c) => c.name.toLowerCase().includes(q) || childrenOf(c.id).some((s) => s.name.toLowerCase().includes(q)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories, search]);
 
-  const topLevelOptions = categories.filter((c) => c.parent_id === null);
+  const deletingHasChildren = deleting ? categories.some((c) => c.parent_id === deleting.id) : false;
+  let rowIndex = 0;
 
-  const handleOpenAddSubcategory = (parentId: string | number) => {
-    setFormData({ name: '', slug: '', parent_id: parentId, display_order: 0, is_active: true });
-    setEditingId(null);
-    setShowForm(true);
-  };
-
-  if (loading) {
-    return <div className="text-gray-400">Loading...</div>;
-  }
+  const renderRow = (category: Category, isSub: boolean) => (
+    <Row key={category.id} index={rowIndex++} className={isSub ? 'bg-blush-50/60' : ''}>
+      <Td>
+        <div className={`flex items-center gap-3 ${isSub ? 'pl-8' : ''}`}>
+          {isSub ? (
+            <span className="text-blush-300">↳</span>
+          ) : (
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blush-100 font-display text-base font-semibold text-berry-600">
+              {category.name.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className={isSub ? 'font-bold text-ink-soft' : 'font-extrabold text-ink'}>{category.name}</span>
+        </div>
+      </Td>
+      <Td className="font-mono text-xs text-muted">{category.slug}</Td>
+      <Td>
+        <Pill tone={productCounts[category.id] ? 'pink' : 'neutral'}>{productCounts[category.id] ?? 0} products</Pill>
+      </Td>
+      <Td>
+        <Toggle checked={category.is_active} onChange={() => handleToggleActive(category)} />
+      </Td>
+      <Td align="right">
+        <RowActions>
+          {!isSub && (
+            <IconAction icon={PlusIcon} label="Add subcategory" tone="success" onClick={() => openSheet({ ...EMPTY_FORM, parent_id: category.id }, null)} />
+          )}
+          <IconAction icon={PencilIcon} label="Edit" tone="edit" onClick={() => handleOpenEdit(category)} />
+          <IconAction icon={TrashIcon} label="Delete" tone="danger" onClick={() => setDeleting(category)} />
+        </RowActions>
+      </Td>
+    </Row>
+  );
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-white">Categories</h1>
-        {!showForm && (
-          <button
-            onClick={handleOpenAdd}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            Add Category
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Categories"
+        subtitle={`${topLevel.length} categories · ${categories.length - topLevel.length} subcategories`}
+        actions={
+          <Button icon={PlusIcon} onClick={() => openSheet(EMPTY_FORM, null)}>
+            Add category
+          </Button>
+        }
+      />
 
-      {showForm && (
-        <div className="bg-gray-800 rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-bold text-white mb-6">
-            {editingId ? 'Edit Category' : 'Add Category'}
-          </h2>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Name *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={handleNameChange}
-                placeholder="Electronics"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Slug *
-              </label>
-              <input
-                type="text"
-                value={formData.slug}
-                onChange={(e) => setFormData((prev) => ({ ...prev, slug: e.target.value }))}
-                placeholder="electronics"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Parent Category
-              </label>
+      {loading ? (
+        <TableSkeleton />
+      ) : (
+        <TableCard toolbar={<SearchInput value={search} onChange={setSearch} placeholder="Search categories…" />}>
+          {categories.length === 0 ? (
+            <EmptyState
+              emoji="🏷️"
+              title="No categories yet"
+              text="Group your products so shoppers can find them faster."
+              action={
+                <Button icon={PlusIcon} onClick={() => openSheet(EMPTY_FORM, null)}>
+                  Add your first category
+                </Button>
+              }
+            />
+          ) : visibleTop.length === 0 ? (
+            <EmptyState emoji="🔍" title="No matches" text={`Nothing found for “${search}”.`} />
+          ) : (
+            <Table>
+              <thead>
+                <tr className="border-b border-line bg-blush-50/60">
+                  <Th>Name</Th>
+                  <Th>Slug</Th>
+                  <Th>Products</Th>
+                  <Th>Active</Th>
+                  <Th align="right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence initial={false}>
+                  {visibleTop.map((category) => (
+                    <Fragment key={category.id}>
+                      {renderRow(category, false)}
+                      {childrenOf(category.id).map((sub) => renderRow(sub, true))}
+                    </Fragment>
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </Table>
+          )}
+        </TableCard>
+      )}
+
+      <Sheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={editingId ? 'Edit category' : formData.parent_id ? 'Add subcategory' : 'Add category'}
+        subtitle={editingId ? formData.name : 'Shoppers will see this in the menu'}
+        icon={TagIcon}
+        onSubmit={handleSave}
+        saving={saving}
+        submitLabel={editingId ? 'Save changes' : 'Add category'}
+      >
+        <div className="card-zs space-y-4 p-5">
+          <Field label="Name" required>
+            <input
+              className="admin-input"
+              value={formData.name}
+              onChange={(e) => {
+                const name = e.target.value;
+                setFormData((prev) => ({ ...prev, name, slug: editingId ? prev.slug : generateSlug(name) }));
+              }}
+              placeholder="Audio"
+              autoFocus
+            />
+          </Field>
+          <Field label="Slug" required hint={`Used in the link: /products?category=${formData.slug || 'audio'}`}>
+            <input
+              className="admin-input font-mono"
+              value={formData.slug}
+              onChange={(e) => setFormData((prev) => ({ ...prev, slug: e.target.value }))}
+              placeholder="audio"
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Parent category">
               <select
+                className="admin-input"
                 value={formData.parent_id ?? ''}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    parent_id: e.target.value ? Number(e.target.value) : null,
-                  }))
-                }
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData((prev) => ({ ...prev, parent_id: e.target.value || null }))}
               >
                 <option value="">None (top-level)</option>
-                {topLevelOptions
+                {topLevel
                   .filter((c) => c.id !== editingId)
                   .map((c) => (
                     <option key={c.id} value={c.id}>
@@ -243,152 +299,37 @@ export default function CategoriesPage() {
                     </option>
                   ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Display Order
-              </label>
+            </Field>
+            <Field label="Display order" hint="Lower shows first">
               <input
                 type="number"
+                className="admin-input"
                 value={formData.display_order}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, display_order: Number(e.target.value) }))
-                }
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData((prev) => ({ ...prev, display_order: Number(e.target.value) }))}
               />
-            </div>
-          </div>
-          <div className="mb-6">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.is_active}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, is_active: e.target.checked }))
-                }
-                className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-gray-300">Is Active</span>
-            </label>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleSave}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              Done
-            </button>
-            <button
-              onClick={handleCancel}
-              className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              Cancel
-            </button>
+            </Field>
           </div>
         </div>
-      )}
+        <Toggle
+          checked={formData.is_active}
+          onChange={(v) => setFormData((prev) => ({ ...prev, is_active: v }))}
+          label="Active"
+          description="Inactive categories are hidden from the store"
+        />
+      </Sheet>
 
-      {categories.length === 0 ? (
-        <div className="text-center text-gray-400 py-12">No categories yet</div>
-      ) : (
-        <div className="bg-gray-800 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Name</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Slug</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {topLevelCategories.map((category) => {
-                const subcategories = getSubcategories(category.id);
-                return (
-                  <Fragment key={category.id}>
-                    <tr className="hover:bg-gray-750">
-                      <td className="px-4 py-3 text-white font-medium">{category.name}</td>
-                      <td className="px-4 py-3 text-gray-400 font-mono text-sm">{category.slug}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleToggleActive(category.id, category.is_active)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            category.is_active ? 'bg-green-600' : 'bg-gray-600'
-                          }`}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              category.is_active ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleOpenAddSubcategory(category.id)}
-                            className="text-green-400 hover:text-green-300 text-sm"
-                          >
-                            + Add Subcategory
-                          </button>
-                          <button
-                            onClick={() => handleOpenEdit(category)}
-                            className="text-blue-400 hover:text-blue-300 text-sm"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(category.id)}
-                            className="text-red-400 hover:text-red-300 text-sm"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {subcategories.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-gray-750 bg-gray-850">
-                        <td className="px-4 py-3 text-gray-300 pl-12">— {sub.name}</td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-sm">{sub.slug}</td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => handleToggleActive(sub.id, sub.is_active)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                              sub.is_active ? 'bg-green-600' : 'bg-gray-600'
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                sub.is_active ? 'translate-x-6' : 'translate-x-1'
-                              }`}
-                            />
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleOpenEdit(sub)}
-                              className="text-blue-400 hover:text-blue-300 text-sm"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDelete(sub.id)}
-                              className="text-red-400 hover:text-red-300 text-sm"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deleting}
+        title={`Delete “${deleting?.name}”?`}
+        message={
+          deletingHasChildren
+            ? 'Its subcategories will be deleted too. Products stay, but lose this category.'
+            : 'Products in it stay, but lose this category. This can’t be undone.'
+        }
+        loading={deleteBusy}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }

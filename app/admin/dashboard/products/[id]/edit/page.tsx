@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { publicClient } from '@/lib/supabase';
+import ProductsPage from '../../page';
+import { Sheet, useAdminToast } from '@/components/admin/ui';
+import { PencilIcon } from '@/components/store/icons';
 
 interface Spec {
   key: string;
@@ -28,7 +31,7 @@ interface Product {
   description: string;
   price: number;
   original_price: number | null;
-  category_id: number | null;
+  category_id: string | null;
   stock: number;
   is_active: boolean;
   is_featured: boolean;
@@ -38,6 +41,14 @@ interface Product {
 
 export default function EditProductPage() {
   const router = useRouter();
+  const notify = useAdminToast();
+  const [open, setOpen] = useState(true);
+  // slide the sheet out before going back to the list
+  const close = (message?: string) => {
+    setOpen(false);
+    if (message) notify(message);
+    setTimeout(() => router.push('/admin/dashboard/products'), 280);
+  };
   const params = useParams();
   const productId = params.id as string;
 
@@ -52,7 +63,7 @@ export default function EditProductPage() {
     description: '',
     price: '',
     original_price: '',
-    category_id: null as number | null,
+    category_id: null as string | null,
     stock: '0',
     is_active: true,
     is_featured: false,
@@ -433,8 +444,8 @@ export default function EditProductPage() {
           }
         } catch (variantErr: any) {
           console.error('Variant save error:', variantErr);
-          setError(`Product updated, but variants failed: ${variantErr.message}`);
-          router.push('/admin/dashboard/products');
+          notify(`Product updated, but variants failed: ${variantErr.message}`, 'error');
+          close();
           return;
         }
       } else {
@@ -449,7 +460,7 @@ export default function EditProductPage() {
           .eq('product_id', productId);
       }
 
-      router.push('/admin/dashboard/products');
+      close('Product updated ✨');
     } catch (err: any) {
       setError(err.message || 'Failed to update product');
       setSubmitting(false);
@@ -458,25 +469,37 @@ export default function EditProductPage() {
 
   if (loading) {
     return (
-      <div className="text-gray-400">Loading...</div>
+      <>
+        <ProductsPage />
+        <Sheet open={open} onClose={() => close()} title="Edit product" subtitle="Loading…" icon={PencilIcon} width="xl">
+          <div className="skeleton h-72 rounded-[1.75rem]" />
+          <div className="skeleton h-40 rounded-[1.75rem]" />
+        </Sheet>
+      </>
     );
   }
 
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-3xl font-bold text-white mb-8">Edit Product</h1>
+    <>
+      <ProductsPage />
+      <Sheet
+        open={open}
+        onClose={() => close()}
+        title="Edit product"
+        subtitle={formData.name || 'Photos, price, stock and options'}
+        icon={PencilIcon}
+        width="xl"
+        onSubmit={() => handleSubmit({ preventDefault() {} } as React.FormEvent)}
+        saving={submitting || uploadingImages}
+        submitLabel="Save changes"
+        footerExtra={uploadingImages ? <span className="text-xs font-bold text-muted">Uploading photos…</span> : null}
+      >
+        {error && <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{error}</div>}
 
-      {error && (
-        <div className="bg-red-900/50 border border-red-700 text-red-300 px-4 py-3 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-gray-800 rounded-lg p-6 space-y-6">
+        <div className="card-zs space-y-5 p-5 md:p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="admin-label">
                 Product Name
               </label>
               <input
@@ -484,12 +507,12 @@ export default function EditProductPage() {
                 required
                 value={formData.name}
                 onChange={(e) => handleNameChange(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="admin-input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="admin-label">
                 Slug
               </label>
               <input
@@ -497,26 +520,26 @@ export default function EditProductPage() {
                 required
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="admin-input"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="admin-label">
               Description
             </label>
             <textarea
               rows={4}
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="admin-input"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="admin-label">
                 Price (Rs.)
               </label>
               <input
@@ -525,12 +548,12 @@ export default function EditProductPage() {
                 step="0.01"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="admin-input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="admin-label">
                 Original Price (Rs.)
               </label>
               <input
@@ -538,18 +561,18 @@ export default function EditProductPage() {
                 step="0.01"
                 value={formData.original_price}
                 onChange={(e) => setFormData({ ...formData, original_price: e.target.value })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="admin-input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="admin-label">
                 Category
               </label>
               <select
                 value={formData.category_id ?? ''}
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value ? Number(e.target.value) || null : null })}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value || null })}
+                className="admin-input"
               >
                 <option value="">Select a category</option>
                 {categories.filter(c => c.parent_id === null).map(parent => {
@@ -573,7 +596,7 @@ export default function EditProductPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="admin-label">
               Stock
             </label>
             <input
@@ -581,34 +604,34 @@ export default function EditProductPage() {
               min="0"
               value={formData.stock}
               onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[200px]"
+              className="admin-input max-w-[200px]"
             />
           </div>
 
           <div className="flex gap-6">
-            <label className="flex items-center gap-3 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-blush-50 px-4 py-3 font-bold">
               <input
                 type="checkbox"
                 checked={formData.is_active}
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                className="h-5 w-5 rounded accent-berry-500"
               />
-              <span className="text-gray-300">Active</span>
+              <span className="text-ink-soft">Active</span>
             </label>
 
-            <label className="flex items-center gap-3 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-3 rounded-2xl bg-blush-50 px-4 py-3 font-bold">
               <input
                 type="checkbox"
                 checked={formData.is_featured}
                 onChange={(e) => setFormData({ ...formData, is_featured: e.target.checked })}
-                className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                className="h-5 w-5 rounded accent-berry-500"
               />
-              <span className="text-gray-300">Featured</span>
+              <span className="text-ink-soft">Featured</span>
             </label>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="admin-label">
               Existing Images
             </label>
             {existingImages.length > 0 ? (
@@ -618,12 +641,12 @@ export default function EditProductPage() {
                     <img
                       src={imageUrl}
                       alt={`Product image ${index + 1}`}
-                      className="w-20 h-20 object-cover rounded-lg"
+                      className="h-24 w-24 rounded-2xl object-cover ring-2 ring-blush-200"
                     />
                     <button
                       type="button"
                       onClick={() => deleteExistingImage(imageUrl)}
-                      className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-700"
+                      className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-rose-500 text-xs font-bold text-white shadow-soft transition-transform hover:scale-110"
                     >
                       X
                     </button>
@@ -631,12 +654,12 @@ export default function EditProductPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No images</p>
+              <p className="text-muted text-sm">No images</p>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="admin-label">
               Add New Images
             </label>
             <input
@@ -644,21 +667,21 @@ export default function EditProductPage() {
               multiple
               accept="image/*"
               onChange={(e) => setNewImageFiles(e.target.files)}
-              className="block w-full text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+              className="block w-full text-muted file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-extrabold file:bg-berry-500 file:text-white hover:file:bg-berry-600"
             />
             {uploadingImages && (
-              <p className="text-gray-400 text-sm mt-2">Uploading images...</p>
+              <p className="text-muted text-sm mt-2">Uploading images...</p>
             )}
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-lg p-6">
+        <div className="card-zs p-5 md:p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-white">Specifications</h2>
+            <h2 className="font-display text-lg font-semibold text-ink">Specifications</h2>
             <button
               type="button"
               onClick={addSpecRow}
-              className="text-blue-400 hover:text-blue-300 text-sm"
+              className="rounded-full bg-blush-100 px-3.5 py-1.5 text-xs font-extrabold text-berry-700 transition-colors hover:bg-blush-200"
             >
               + Add Spec
             </button>
@@ -672,20 +695,20 @@ export default function EditProductPage() {
                   placeholder="Key (e.g. Battery)"
                   value={spec.key}
                   onChange={(e) => updateSpec(index, 'key', e.target.value)}
-                  className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="admin-input flex-1"
                 />
                 <input
                   type="text"
                   placeholder="Value (e.g. 5000mAh)"
                   value={spec.value}
                   onChange={(e) => updateSpec(index, 'value', e.target.value)}
-                  className="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="admin-input flex-1"
                 />
                 {specs.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeSpecRow(index)}
-                    className="text-red-400 hover:text-red-300 px-2"
+                    className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-extrabold text-rose-600 transition-colors hover:bg-rose-50"
                   >
                     Remove
                   </button>
@@ -695,13 +718,13 @@ export default function EditProductPage() {
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-lg p-6">
+        <div className="card-zs p-5 md:p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium text-white">Variants</h2>
+            <h2 className="font-display text-lg font-semibold text-ink">Variants</h2>
             <button
               type="button"
               onClick={addAttribute}
-              className="text-blue-400 hover:text-blue-300 text-sm"
+              className="rounded-full bg-blush-100 px-3.5 py-1.5 text-xs font-extrabold text-berry-700 transition-colors hover:bg-blush-200"
             >
               + Add Attribute
             </button>
@@ -709,7 +732,7 @@ export default function EditProductPage() {
 
           <div className="space-y-4">
             {attributes.map((attr) => (
-              <div key={attr.id} className="bg-gray-700 rounded-lg p-4">
+              <div key={attr.id} className="rounded-2xl border-2 border-dashed border-blush-300 bg-blush-50 p-4">
                 <div className="flex gap-4 items-start mb-3">
                   <div className="flex-1">
                     <input
@@ -717,13 +740,13 @@ export default function EditProductPage() {
                       placeholder="Attribute Name (e.g. Color)"
                       value={attr.name}
                       onChange={(e) => updateAttributeName(attr.id, e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="admin-input"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => removeAttribute(attr.id)}
-                    className="text-red-400 hover:text-red-300 px-2 py-2"
+                    className="whitespace-nowrap rounded-full px-3 py-2 text-xs font-extrabold text-rose-600 transition-colors hover:bg-rose-50"
                   >
                     Remove Attribute
                   </button>
@@ -733,13 +756,13 @@ export default function EditProductPage() {
                   {attr.values.map((value, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-1 bg-gray-600 rounded-full px-3 py-1"
+                      className="flex items-center gap-1 rounded-full bg-white px-3 py-1 font-bold shadow-sm ring-1 ring-blush-300"
                     >
-                      <span className="text-white text-sm">{value}</span>
+                      <span className="text-ink text-sm">{value}</span>
                       <button
                         type="button"
                         onClick={() => removeAttributeValue(attr.id, index)}
-                        className="text-gray-400 hover:text-red-300 ml-1"
+                        className="text-muted hover:text-red-700 ml-1"
                       >
                         ×
                       </button>
@@ -764,7 +787,7 @@ export default function EditProductPage() {
                         e.target.value = '';
                       }
                     }}
-                    className="flex-1 px-4 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="admin-input flex-1 text-sm"
                   />
                   <button
                     type="button"
@@ -775,7 +798,7 @@ export default function EditProductPage() {
                         input.value = '';
                       }
                     }}
-                    className="text-blue-400 hover:text-blue-300 px-3 py-2"
+                    className="whitespace-nowrap rounded-full bg-blush-100 px-4 text-xs font-extrabold text-berry-700 transition-colors hover:bg-blush-200"
                   >
                     + Add Value
                   </button>
@@ -784,7 +807,7 @@ export default function EditProductPage() {
             ))}
 
             {attributes.length === 0 && (
-              <p className="text-gray-400 text-sm">
+              <p className="text-muted text-sm">
                 No attributes defined. Add an attribute (e.g. Color, Size) to create variants.
               </p>
             )}
@@ -793,7 +816,7 @@ export default function EditProductPage() {
               <button
                 type="button"
                 onClick={generateCombinations}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+                className="rounded-full bg-ink px-5 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-berry-600"
               >
                 Generate Variant Combinations
               </button>
@@ -801,13 +824,13 @@ export default function EditProductPage() {
 
             {variantCombinations.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-md font-medium text-white mb-3">
+                <h3 className="mb-3 font-display font-semibold text-ink">
                   Generated Combinations ({variantCombinations.length})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-gray-400 border-b border-gray-600">
+                      <tr className="border-b border-line text-left text-xs font-extrabold uppercase tracking-wider text-muted">
                         <th className="pb-2 pr-4">Combination</th>
                         <th className="pb-2 pr-4">Price Override</th>
                         <th className="pb-2">Stock</th>
@@ -815,8 +838,8 @@ export default function EditProductPage() {
                     </thead>
                     <tbody>
                       {variantCombinations.map((variant, index) => (
-                        <tr key={index} className="border-b border-gray-700">
-                          <td className="py-2 pr-4 text-white">
+                        <tr key={index} className="border-b border-line">
+                          <td className="py-2 pr-4 text-ink">
                             {Object.entries(variant.combination)
                               .map(([key, val]) => `${key}: ${val}`)
                               .join(' / ')}
@@ -828,7 +851,7 @@ export default function EditProductPage() {
                               placeholder="Use base price"
                               value={variant.price ?? ''}
                               onChange={(e) => updateVariantPrice(index, e.target.value)}
-                              className="w-full px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="admin-input"
                             />
                           </td>
                           <td className="py-2">
@@ -837,7 +860,7 @@ export default function EditProductPage() {
                               min="0"
                               value={variant.stock}
                               onChange={(e) => updateVariantStock(index, e.target.value)}
-                              className="w-full px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="admin-input"
                             />
                           </td>
                         </tr>
@@ -850,23 +873,7 @@ export default function EditProductPage() {
           </div>
         </div>
 
-        <div className="flex gap-4">
-          <button
-            type="submit"
-            disabled={submitting || uploadingImages}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Saving...' : 'Update Product'}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/admin/dashboard/products')}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
+      </Sheet>
+    </>
   );
 }

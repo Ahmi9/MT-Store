@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import { BRAND } from '@/lib/brand';
+import { BagIcon, ChartIcon, ClockIcon, GiftIcon, PackageIcon } from '@/components/store/icons';
 
 interface Order {
   id: string;
@@ -34,37 +36,19 @@ interface GA4Stats {
 }
 
 const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-600 text-white',
-  confirmed: 'bg-blue-600 text-white',
-  shipped: 'bg-purple-600 text-white',
-  delivered: 'bg-green-600 text-white',
-  cancelled: 'bg-red-600 text-white',
+  pending: 'bg-amber-100 text-amber-700',
+  confirmed: 'bg-sky-100 text-sky-700',
+  shipped: 'bg-violet-100 text-violet-700',
+  delivered: 'bg-emerald-100 text-emerald-700',
+  cancelled: 'bg-rose-100 text-rose-700',
 };
 
 function PulsingDot() {
   return (
-    <span className="relative flex h-3 w-3">
-      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+    <span className="relative flex h-2.5 w-2.5">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
     </span>
-  );
-}
-
-function AnalyticsSkeleton() {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      {[1, 2, 3, 4].map((i) => (
-        <div key={i} className="bg-gray-800 rounded-lg p-5 border-l-4 border-gray-600 animate-pulse">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="h-4 w-28 bg-gray-700 rounded mb-2"></div>
-              <div className="h-8 w-16 bg-gray-700 rounded"></div>
-            </div>
-            <div className="w-12 h-12 bg-gray-700 rounded-full"></div>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -106,58 +90,48 @@ function CountUpStat({ value, prefix = '', suffix = '', delay = 0 }: { value: nu
   return <>{prefix}{count.toLocaleString()}{suffix}</>;
 }
 
-function StatCard({ label, value, icon, borderColor, delay, prefix = '', suffix = '' }: {
+const TINTS = {
+  pink: 'bg-blush-100 text-berry-600',
+  violet: 'bg-lilac text-violet-600',
+  peach: 'bg-peach text-orange-600',
+  mint: 'bg-mint text-emerald-600',
+  sky: 'bg-sky-100 text-sky-600',
+  rose: 'bg-rose-100 text-rose-600',
+};
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tint,
+  delay,
+  hint,
+}: {
   label: string;
   value: number;
-  icon: React.ReactNode;
-  borderColor: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tint: keyof typeof TINTS;
   delay: number;
-  prefix?: string;
-  suffix?: string;
+  hint?: string;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4, ease: 'easeOut' }}
-      className={`bg-gray-800 rounded-lg p-5 border-l-4 ${borderColor}`}
+      whileHover={{ y: -4 }}
+      className="card-zs p-5"
     >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-gray-400 text-sm">{label}</p>
-          <p className="text-2xl font-bold text-white mt-1">
-            <CountUpStat value={value} prefix={prefix} suffix={suffix} delay={delay} />
-          </p>
-        </div>
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${borderColor.replace('border-', '').replace('-500', '/20').replace('-[#f5c518]', '-[#f5c518]/20')}`}>
-          {icon}
-        </div>
+      <div className="flex items-start justify-between gap-3">
+        <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${TINTS[tint]}`}>
+          <Icon className="h-5 w-5" />
+        </span>
+        {hint && <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted">{hint}</span>}
       </div>
-    </motion.div>
-  );
-}
-
-function RevenueCard({ value, delay }: { value: number; delay: number }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.4, ease: 'easeOut' }}
-      className="bg-gray-800 rounded-lg p-5 border-l-4 border-green-500"
-    >
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-gray-400 text-sm">Total Revenue</p>
-          <p className="text-2xl font-bold text-white mt-1">
-            Rs. <CountUpStat value={value} delay={delay} />
-          </p>
-        </div>
-        <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-      </div>
+      <p className="mt-4 font-display text-3xl font-semibold text-ink">
+        <CountUpStat value={value} delay={delay} />
+      </p>
+      <p className="text-sm font-bold text-muted">{label}</p>
     </motion.div>
   );
 }
@@ -277,249 +251,185 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="text-gray-400">Loading...</div>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="skeleton h-32 rounded-[1.75rem]" />
+        ))}
+      </div>
     );
   }
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const paidSplit = stats.codOrders + stats.advanceOrders;
+  const codShare = paidSplit ? Math.round((stats.codOrders / paidSplit) * 100) : 0;
+
   return (
-    <div>
-      <motion.h1
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="text-3xl font-bold text-white mb-8"
-      >
-        Dashboard
-      </motion.h1>
+    <div className="space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-semibold text-ink md:text-4xl">{greeting} ✨</h1>
+          <p className="font-semibold text-muted">
+            {new Date().toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long' })} · here’s how {BRAND.name} is doing
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/admin/dashboard/orders" className="rounded-full border border-line bg-white px-4 py-2 text-sm font-extrabold text-ink-soft hover:text-berry-600">
+            View orders
+          </Link>
+          <Link href="/admin/dashboard/coupons" className="rounded-full border border-line bg-white px-4 py-2 text-sm font-extrabold text-ink-soft hover:text-berry-600">
+            Coupons
+          </Link>
+        </div>
+      </motion.div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-berry-400 via-berry-500 to-berry-600 p-6 text-white shadow-pop lg:col-span-2 md:p-8"
+        >
+          <div className="absolute -right-10 -top-10 h-56 w-56 animate-blob bg-white/15 blur-2xl" />
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
+            className="absolute -bottom-20 -right-16 h-56 w-56 rounded-full border-[14px] border-dashed border-white/15"
+          />
+          <p className="relative text-sm font-extrabold uppercase tracking-[0.18em] text-white/70">Total revenue</p>
+          <p className="relative mt-2 font-display text-4xl font-semibold md:text-6xl">
+            Rs. <CountUpStat value={stats.totalRevenue} />
+          </p>
+          <p className="relative mt-1 text-sm font-semibold text-white/80">From all orders that aren’t cancelled</p>
+          <div className="relative mt-6 grid max-w-md grid-cols-3 gap-3">
+            {[
+              { label: 'Today', value: stats.todayOrders },
+              { label: 'Pending', value: stats.pendingOrders },
+              { label: 'Delivered', value: stats.deliveredOrders },
+            ].map((m) => (
+              <div key={m.label} className="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur">
+                <p className="font-display text-2xl font-semibold">{m.value}</p>
+                <p className="text-xs font-bold text-white/75">{m.label} orders</p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card-zs flex flex-col p-6">
+          <p className="font-display text-lg font-semibold text-ink">Payment mix</p>
+          <p className="text-sm font-semibold text-muted">{paidSplit} orders in total</p>
+          <div className="mt-5 flex h-4 overflow-hidden rounded-full bg-blush-100">
+            <motion.div initial={{ width: 0 }} animate={{ width: `${codShare}%` }} transition={{ duration: 1, delay: 0.3 }} className="h-full bg-ink" />
+            <motion.div initial={{ width: 0 }} animate={{ width: `${paidSplit ? 100 - codShare : 0}%` }} transition={{ duration: 1, delay: 0.5 }} className="h-full bg-berry-400" />
+          </div>
+          <div className="mt-4 space-y-2 text-sm font-bold">
+            <p className="flex items-center justify-between text-ink-soft">
+              <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-ink" /> Cash on delivery</span>
+              <span className="text-ink">{stats.codOrders}</span>
+            </p>
+            <p className="flex items-center justify-between text-ink-soft">
+              <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-berry-400" /> Advance payment</span>
+              <span className="text-ink">{stats.advanceOrders}</span>
+            </p>
+          </div>
+          <Link href="/admin/dashboard/settings" className="mt-auto pt-5 text-sm font-extrabold text-berry-600 hover:underline">
+            Payment settings →
+          </Link>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard label="Today’s orders" value={stats.todayOrders} icon={GiftIcon} tint="pink" delay={0.05} hint="today" />
+        <StatCard label="Pending orders" value={stats.pendingOrders} icon={ClockIcon} tint="peach" delay={0.1} hint="to do" />
+        <StatCard label="Active products" value={stats.totalProducts} icon={BagIcon} tint="violet" delay={0.15} />
+        <StatCard label="Out of stock" value={stats.outOfStock} icon={PackageIcon} tint="rose" delay={0.2} hint={stats.outOfStock ? 'restock' : undefined} />
+      </div>
 
       {ga4Loading ? (
-        <AnalyticsSkeleton />
-      ) : ga4Error ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="bg-gray-800 rounded-lg p-4 border-l-4 border-red-500 mb-6"
-        >
-          <p className="text-gray-400">Analytics unavailable</p>
-        </motion.div>
-      ) : ga4Stats && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1, duration: 0.4 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
-        >
-          <div className="bg-gray-800 rounded-lg p-5 border-l-4 border-green-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <PulsingDot />
-                  <p className="text-gray-400 text-sm">Live Visitors Now</p>
-                </div>
-                <p className="text-2xl font-bold text-white mt-1">{ga4Stats.activeUsersNow}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                </svg>
-              </div>
-            </div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="skeleton h-32 rounded-[1.75rem]" />
+          ))}
+        </div>
+      ) : ga4Error || !ga4Stats ? (
+        <div className="card-zs flex items-center gap-3 p-4 text-sm font-semibold text-muted">
+          <ChartIcon className="h-5 w-5 text-berry-400" /> Website analytics are unavailable right now.
+        </div>
+      ) : (
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="card-zs p-5 md:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="font-display text-lg font-semibold text-ink">Website traffic</p>
+            <span className="flex items-center gap-2 rounded-full bg-mint px-3 py-1 text-xs font-extrabold text-emerald-700">
+              <PulsingDot /> {ga4Stats.activeUsersNow} online now
+            </span>
           </div>
-
-          <div className="bg-gray-800 rounded-lg p-5 border-l-4 border-[#f5c518]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Today&apos;s Sessions</p>
-                <p className="text-2xl font-bold text-white mt-1">{ga4Stats.todaySessions}</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Today', value: ga4Stats.todaySessions, tint: 'bg-blush-100' },
+              { label: 'Yesterday', value: ga4Stats.yesterdaySessions, tint: 'bg-lilac' },
+              { label: 'Last 7 days', value: ga4Stats.last7DaysSessions, tint: 'bg-peach' },
+            ].map((t) => (
+              <div key={t.label} className={`rounded-2xl p-4 ${t.tint}`}>
+                <p className="font-display text-2xl font-semibold text-ink">{Number(t.value).toLocaleString()}</p>
+                <p className="text-xs font-bold text-ink-soft">{t.label} sessions</p>
               </div>
-              <div className="w-12 h-12 bg-[#f5c518]/20 rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#f5c518]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gray-800 rounded-lg p-5 border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Yesterday&apos;s Sessions</p>
-                <p className="text-2xl font-bold text-white mt-1">{ga4Stats.yesterdaySessions}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gray-800 rounded-lg p-5 border-l-4 border-purple-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Last 7 Days Sessions</p>
-                <p className="text-2xl font-bold text-white mt-1">{ga4Stats.last7DaysSessions}</p>
-              </div>
-              <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                </svg>
-              </div>
-            </div>
+            ))}
           </div>
         </motion.div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Today's Orders"
-          value={stats.todayOrders}
-          borderColor="border-[#f5c518]"
-          delay={0}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#f5c518]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          label="Pending Orders"
-          value={stats.pendingOrders}
-          borderColor="border-yellow-500"
-          delay={0.08}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          }
-        />
-
-        <RevenueCard value={stats.totalRevenue} delay={0.16} />
-
-        <StatCard
-          label="Delivered Orders"
-          value={stats.deliveredOrders}
-          borderColor="border-blue-500"
-          delay={0.24}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
-            </svg>
-          }
-        />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          label="COD Orders"
-          value={stats.codOrders}
-          borderColor="border-gray-500"
-          delay={0.32}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          label="Advance Orders"
-          value={stats.advanceOrders}
-          borderColor="border-[#f5c518]"
-          delay={0.4}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#f5c518]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5h1.5a3.75 3.75 0 010 7.5H10l2.5 3.75L15 15l3-4.5H19.5a3.75 3.75 0 000-7.5H3z" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          label="Total Products"
-          value={stats.totalProducts}
-          borderColor="border-purple-500"
-          delay={0.48}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-            </svg>
-          }
-        />
-
-        <StatCard
-          label="Out of Stock"
-          value={stats.outOfStock}
-          borderColor="border-red-500"
-          delay={0.56}
-          icon={
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-          }
-        />
-      </div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.4 }}
-        className="bg-gray-800 rounded-lg p-6"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-white">Recent Orders</h2>
-          <Link
-            href="/admin/dashboard/orders"
-            className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-          >
-            View All Orders →
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.4 }} className="card-zs p-5 md:p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold text-ink">Recent orders</h2>
+          <Link href="/admin/dashboard/orders" className="text-sm font-extrabold text-berry-600 hover:underline">
+            View all →
           </Link>
         </div>
 
         {recentOrders.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">No orders yet</p>
+          <div className="rounded-2xl bg-blush-50 py-10 text-center">
+            <p className="text-3xl">🛍️</p>
+            <p className="mt-2 font-bold text-ink">No orders yet</p>
+            <p className="text-sm font-semibold text-muted">New orders will pop up here.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div>
             <table className="w-full">
-              <thead className="bg-gray-700">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Order #</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Total</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Status</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Payment</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Date</th>
+              <thead>
+                <tr className="border-b border-line">
+                  <th className="px-3 py-3 text-left">Order</th>
+                  <th className="px-3 py-3 text-left">Customer</th>
+                  <th className="px-3 py-3 text-left">Total</th>
+                  <th className="px-3 py-3 text-left">Status</th>
+                  <th className="px-3 py-3 text-left">Payment</th>
+                  <th className="px-3 py-3 text-left">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
+              <tbody className="divide-y divide-line">
                 {recentOrders.map((order, index) => (
                   <motion.tr
                     key={order.id}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + index * 0.05, duration: 0.3 }}
-                    className="hover:bg-gray-750"
+                    transition={{ delay: 0.4 + index * 0.05, duration: 0.3 }}
                   >
-                    <td className="px-4 py-3 text-white font-medium">{order.order_number}</td>
-                    <td className="px-4 py-3 text-gray-300">{order.customer_name}</td>
-                    <td className="px-4 py-3 text-white">Rs. {order.total.toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[order.status] || 'bg-gray-600 text-white'}`}>
+                    <td className="px-3 py-3">
+                      <Link href={`/admin/dashboard/orders/${order.id}`} className="font-extrabold text-ink hover:text-berry-600">
+                        #{order.order_number}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-ink-soft">{order.customer_name}</td>
+                    <td className="px-3 py-3 font-bold text-ink">Rs. {Number(order.total).toLocaleString()}</td>
+                    <td className="px-3 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${statusColors[order.status] || 'bg-blush-100 text-ink-soft'}`}>
                         {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        order.payment_type === 'cod'
-                          ? 'bg-gray-600 text-gray-300'
-                          : 'bg-[#f5c518] text-yellow-900'
-                      }`}>
+                    <td className="px-3 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${order.payment_type === 'cod' ? 'bg-blush-50 text-ink-soft' : 'bg-blush-200 text-berry-700'}`}>
                         {order.payment_type === 'cod' ? 'COD' : 'Advance'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-sm">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </td>
+                    <td className="px-3 py-3 text-sm font-semibold text-muted">{new Date(order.created_at).toLocaleDateString('en-PK')}</td>
                   </motion.tr>
                 ))}
               </tbody>

@@ -1,55 +1,44 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { publicClient } from '@/lib/supabase';
+import { getSiteSettings } from '@/lib/catalog';
+import { SparkleIcon } from '@/components/store/icons';
 
-interface AnnouncementBarProps {
-  isActive?: boolean;
-}
-
-export default function AnnouncementBar({ isActive }: AnnouncementBarProps) {
-  const [textWhite, setTextWhite] = useState<string | null>(null);
-  const [textGold, setTextGold] = useState<string | null>(null);
-  const [isEnabled, setIsEnabled] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
+// Text is managed from Admin → Settings. The bar hides itself when it is
+// switched off there or both text fields are empty.
+export default function AnnouncementBar() {
+  const [text, setText] = useState<{ main: string; accent: string } | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      const { data } = await publicClient
-        .from('site_settings')
-        .select('announcement_bar_active, announcement_text_white, announcement_text_gold')
-        .single();
-      if (data) {
-        setIsEnabled(data.announcement_bar_active ?? true);
-        setTextWhite(data.announcement_text_white);
-        setTextGold(data.announcement_text_gold);
-      }
-      setIsLoading(false);
-    };
-    fetchSettings();
+    getSiteSettings().then((s) => {
+      if (!s || s.announcement_bar_active === false) return;
+      const main = s.announcement_text_white?.trim() || '';
+      const accent = s.announcement_text_gold?.trim() || '';
+      if (main || accent) setText({ main, accent });
+    });
   }, []);
 
-  if (isActive === false) return null;
+  if (!text) return null;
 
-  if (isLoading) {
-    return (
-      <div className="bg-[#0a0a0a] min-h-[38px] flex items-center justify-center text-white text-center py-3 px-4 text-sm">
-        <span className="font-medium">Loading...</span>
-      </div>
-    );
-  }
-
-  if (!isEnabled) return null;
-
-  const displayWhite = textWhite || '';
-  const displayGold = textGold || '';
-
-  if (!displayWhite && !displayGold) return null;
+  const item = (
+    <span className="flex items-center gap-3 px-6">
+      <SparkleIcon className="h-3.5 w-3.5 text-blush-200" />
+      <span>{text.main}</span>
+      {text.accent && <span className="rounded-full bg-white/20 px-2 py-0.5 text-blush-100">{text.accent}</span>}
+    </span>
+  );
 
   return (
-    <div className="bg-[#0a0a0a] min-h-[38px] flex items-center justify-center text-white text-center py-3 px-4 text-sm">
-      <span className="font-medium">{displayWhite}</span>
-      {displayGold && <span className="font-medium text-[#f5c518]"> {displayGold}</span>}
+    <div className="relative overflow-hidden bg-gradient-to-r from-berry-500 via-berry-400 to-berry-500 py-2 text-[13px] font-bold text-white">
+      <div className="flex w-max animate-marquee whitespace-nowrap hover:[animation-play-state:paused]">
+        {Array.from({ length: 2 }).map((_, half) => (
+          <div key={half} className="flex" aria-hidden={half === 1}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <span key={i}>{item}</span>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

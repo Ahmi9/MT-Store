@@ -1,8 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  Field,
+  IconAction,
+  PageHeader,
+  Sheet,
+  Toggle,
+  useAdminToast,
+} from '@/components/admin/ui';
+import { CardIcon, CheckIcon, GiftIcon, PencilIcon, PlusIcon, SparkleIcon, TrashIcon, UserIcon } from '@/components/store/icons';
 
 interface SiteSettings {
   id: number;
@@ -26,11 +39,26 @@ interface PaymentMethod {
   iban: string | null;
 }
 
-export default function SettingsPage() {
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
+type FormData = {
+  store_name: string;
+  whatsapp_number: string;
+  announcement_bar_text: string;
+  announcement_bar_active: boolean;
+  announcement_text_white: string;
+  announcement_text_gold: string;
+  hero_title: string;
+  hero_subtitle: string;
+  advance_payment_discount_enabled: boolean;
+  advance_payment_discount_amount: number;
+};
 
-const [formData, setFormData] = useState({
+const EMPTY_METHOD = { method_name: '', account_title: '', account_number: '', iban: '' };
+
+export default function SettingsPage() {
+  const notify = useAdminToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState<FormData>({
     store_name: '',
     whatsapp_number: '',
     announcement_bar_text: '',
@@ -42,39 +70,28 @@ const [formData, setFormData] = useState({
     advance_payment_discount_enabled: false,
     advance_payment_discount_amount: 200,
   });
+  const [saved, setSaved] = useState<FormData | null>(null);
 
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paymentFormData, setPaymentFormData] = useState({
-    method_name: '',
-    account_title: '',
-    account_number: '',
-    iban: '',
-  });
+  const [methodSheet, setMethodSheet] = useState(false);
+  const [editingMethod, setEditingMethod] = useState<number | null>(null);
+  const [methodForm, setMethodForm] = useState(EMPTY_METHOD);
+  const [methodSaving, setMethodSaving] = useState(false);
+  const [deletingMethod, setDeletingMethod] = useState<PaymentMethod | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const fetchPaymentMethods = async () => {
-    const { data } = await publicClient
-      .from('payment_methods')
-      .select('*')
-      .order('display_order', { ascending: true });
+    const { data } = await publicClient.from('payment_methods').select('*').order('display_order', { ascending: true });
     if (data) setPaymentMethods(data as PaymentMethod[]);
   };
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data, error } = await publicClient
-        .from('site_settings')
-        .select('*')
-        .eq('id', 1)
-        .single();
-
-      if (error) {
-        console.error('Error fetching settings:', error);
-      }
-
+      const { data, error } = await publicClient.from('site_settings').select('*').eq('id', 1).single();
+      if (error) notify(`Couldn’t load settings: ${error.message}`, 'error');
       if (data) {
         const s = data as SiteSettings;
-        setFormData({
+        const loaded: FormData = {
           store_name: s.store_name ?? '',
           whatsapp_number: s.whatsapp_number ?? '',
           announcement_bar_text: s.announcement_bar_text ?? '',
@@ -85,443 +102,290 @@ const [formData, setFormData] = useState({
           hero_subtitle: s.hero_subtitle ?? '',
           advance_payment_discount_enabled: s.advance_payment_discount_enabled ?? false,
           advance_payment_discount_amount: s.advance_payment_discount_amount ?? 200,
-        });
+        };
+        setFormData(loaded);
+        setSaved(loaded);
       }
-
       setLoading(false);
     };
-
     fetchSettings();
     fetchPaymentMethods();
-  }, []);
+  }, [notify]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    const checked = (e.target as HTMLInputElement).checked;
+  const set = <K extends keyof FormData>(key: K, value: FormData[K]) => setFormData((prev) => ({ ...prev, [key]: value }));
+  const dirty = saved !== null && JSON.stringify(saved) !== JSON.stringify(formData);
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }));
-
-    console.log('Form updated:', name, '=', type === 'checkbox' ? checked : value);
-  };
-
-  const handlePaymentFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setPaymentFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleAddPaymentMethod = () => {
-    setPaymentFormData({ method_name: '', account_title: '', account_number: '', iban: '' });
-    setShowPaymentForm(true);
-  };
-
-  const handleCancelPaymentForm = () => {
-    setShowPaymentForm(false);
-    setPaymentFormData({ method_name: '', account_title: '', account_number: '', iban: '' });
-  };
-
-  const handleSavePaymentMethod = async () => {
-    if (!paymentFormData.method_name || !paymentFormData.account_title || !paymentFormData.account_number) {
-      alert('Please fill in Method Name, Account Title, and Account Number');
-      return;
-    }
-
-    const { error } = await publicClient
-      .from('payment_methods')
-      .insert({
-        method_name: paymentFormData.method_name,
-        account_title: paymentFormData.account_title,
-        account_number: paymentFormData.account_number,
-        iban: paymentFormData.iban || null,
-        display_order: 0,
-        is_active: true,
-      });
-
+  const handleSave = async () => {
+    setSaving(true);
+    const { error } = await publicClient.from('site_settings').update(formData).eq('id', 1);
+    setSaving(false);
     if (error) {
-      alert('Error saving payment method: ' + error.message);
+      notify(`Couldn’t save: ${error.message}`, 'error');
       return;
     }
+    setSaved(formData);
+    notify('Settings saved ✨');
+  };
 
-    setShowPaymentForm(false);
-    setPaymentFormData({ method_name: '', account_title: '', account_number: '', iban: '' });
+  const openMethod = (method: PaymentMethod | null) => {
+    setEditingMethod(method?.id ?? null);
+    setMethodForm(
+      method
+        ? { method_name: method.method_name, account_title: method.account_title, account_number: method.account_number, iban: method.iban ?? '' }
+        : EMPTY_METHOD
+    );
+    setMethodSheet(true);
+  };
+
+  const handleSaveMethod = async () => {
+    if (!methodForm.method_name.trim() || !methodForm.account_title.trim() || !methodForm.account_number.trim()) {
+      notify('Please fill in method name, account title and account number', 'error');
+      return;
+    }
+    const payload = {
+      method_name: methodForm.method_name.trim(),
+      account_title: methodForm.account_title.trim(),
+      account_number: methodForm.account_number.trim(),
+      iban: methodForm.iban.trim() || null,
+    };
+    setMethodSaving(true);
+    const { error } = editingMethod
+      ? await publicClient.from('payment_methods').update(payload).eq('id', editingMethod)
+      : await publicClient.from('payment_methods').insert({ ...payload, display_order: paymentMethods.length, is_active: true });
+    setMethodSaving(false);
+    if (error) {
+      notify(`Couldn’t save payment method: ${error.message}`, 'error');
+      return;
+    }
+    notify(editingMethod ? 'Payment method updated' : 'Payment method added');
+    setMethodSheet(false);
     fetchPaymentMethods();
   };
 
-  const handleDeletePaymentMethod = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this payment method?')) return;
-
-    const { error } = await publicClient.from('payment_methods').delete().eq('id', id);
-    if (!error) {
-      setPaymentMethods(paymentMethods.filter((m) => m.id !== id));
-    }
-  };
-
-  const handleSave = async () => {
-    setLoading(true);
-    setMessage('');
-
-    console.log('Saving with data:', {
-      store_name: formData.store_name,
-      whatsapp_number: formData.whatsapp_number,
-      announcement_bar_text: formData.announcement_bar_text,
-      announcement_bar_active: formData.announcement_bar_active,
-      announcement_text_white: formData.announcement_text_white,
-      announcement_text_gold: formData.announcement_text_gold,
-      hero_title: formData.hero_title,
-      hero_subtitle: formData.hero_subtitle,
-      advance_payment_discount_enabled: formData.advance_payment_discount_enabled,
-      advance_payment_discount_amount: formData.advance_payment_discount_amount,
-    });
-
-    const { error } = await publicClient
-      .from('site_settings')
-      .update({
-        store_name: formData.store_name,
-        whatsapp_number: formData.whatsapp_number,
-        announcement_bar_text: formData.announcement_bar_text,
-        announcement_bar_active: formData.announcement_bar_active,
-        announcement_text_white: formData.announcement_text_white,
-        announcement_text_gold: formData.announcement_text_gold,
-        hero_title: formData.hero_title,
-        hero_subtitle: formData.hero_subtitle,
-        advance_payment_discount_enabled: formData.advance_payment_discount_enabled,
-        advance_payment_discount_amount: formData.advance_payment_discount_amount,
-      })
-      .eq('id', 1);
-
-    console.log('Save result:', error);
-
+  const confirmDeleteMethod = async () => {
+    if (!deletingMethod) return;
+    setDeleteBusy(true);
+    const { error } = await publicClient.from('payment_methods').delete().eq('id', deletingMethod.id);
+    setDeleteBusy(false);
+    setDeletingMethod(null);
     if (error) {
-      setMessage('Error: ' + error.message);
-    } else {
-      setMessage('Settings saved successfully!');
+      notify(`Couldn’t delete: ${error.message}`, 'error');
+      return;
     }
-    setLoading(false);
+    setPaymentMethods((list) => list.filter((m) => m.id !== deletingMethod.id));
+    notify('Payment method deleted');
   };
 
   if (loading) {
     return (
-      <div className="text-gray-400">Loading...</div>
+      <div className="space-y-4">
+        <div className="skeleton h-12 w-48 rounded-2xl" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="skeleton h-44 rounded-[1.75rem]" />
+        ))}
+      </div>
     );
   }
 
   return (
-    <div className="max-w-3xl">
-      <motion.h1
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-3xl font-bold text-white mb-8"
-      >
-        Settings
-      </motion.h1>
+    <div className="pb-24">
+      <PageHeader title="Settings" subtitle="Store details, homepage text and payments" />
 
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card title="Store information" description="How customers reach you" icon={UserIcon}>
+          <div className="space-y-4">
+            <Field label="Store name" hint="Shown in the admin; the storefront uses the Zestore.pk logo">
+              <input className="admin-input" value={formData.store_name} onChange={(e) => set('store_name', e.target.value)} placeholder="Zestore.pk" />
+            </Field>
+            <Field label="WhatsApp number" hint="e.g. 03001234567 — used for every WhatsApp button on the store">
+              <input className="admin-input" value={formData.whatsapp_number} onChange={(e) => set('whatsapp_number', e.target.value)} placeholder="03001234567" inputMode="tel" />
+            </Field>
+          </div>
+        </Card>
+
+        <Card title="Announcement bar" description="The scrolling strip at the very top" icon={SparkleIcon} delay={0.05}>
+          <div className="space-y-4">
+            <Field label="Announcement text">
+              <input className="admin-input" value={formData.announcement_text_white} onChange={(e) => set('announcement_text_white', e.target.value)} placeholder="Free delivery on orders above" />
+            </Field>
+            <Field label="Highlight text" hint="Shown as a little badge after the main text">
+              <input className="admin-input" value={formData.announcement_text_gold} onChange={(e) => set('announcement_text_gold', e.target.value)} placeholder="Rs. 3,000 ✨" />
+            </Field>
+            <Toggle checked={formData.announcement_bar_active} onChange={(v) => set('announcement_bar_active', v)} label="Show announcement bar" />
+            <AnimatePresence>
+              {formData.announcement_bar_active && (formData.announcement_text_white || formData.announcement_text_gold) && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                  <div className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-berry-500 via-berry-400 to-berry-500 py-2 text-[13px] font-bold text-white">
+                    <SparkleIcon className="h-3.5 w-3.5 text-blush-200" />
+                    {formData.announcement_text_white}
+                    {formData.announcement_text_gold && <span className="rounded-full bg-white/20 px-2 py-0.5">{formData.announcement_text_gold}</span>}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </Card>
+
+        <Card title="Homepage hero" description="Leave empty to use the default text" icon={SparkleIcon} delay={0.1}>
+          <div className="space-y-4">
+            <Field label="Hero title">
+              <input className="admin-input" value={formData.hero_title} onChange={(e) => set('hero_title', e.target.value)} placeholder="Cute tech that makes you smile" />
+            </Field>
+            <Field label="Hero subtitle">
+              <textarea
+                className="admin-input resize-none"
+                rows={3}
+                value={formData.hero_subtitle}
+                onChange={(e) => set('hero_subtitle', e.target.value)}
+                placeholder="Headphones, smartwatches, powerbanks & little gadgets you’ll actually love…"
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <Card title="Advance payment discount" description="Reward customers who pay before delivery" icon={GiftIcon} delay={0.15}>
+          <div className="space-y-4">
+            <Toggle
+              checked={formData.advance_payment_discount_enabled}
+              onChange={(v) => set('advance_payment_discount_enabled', v)}
+              label="Give a discount for advance payment"
+            />
+            <AnimatePresence>
+              {formData.advance_payment_discount_enabled && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                  <Field label="Discount amount (Rs.)">
+                    <input
+                      type="number"
+                      className="admin-input"
+                      value={formData.advance_payment_discount_amount}
+                      onChange={(e) => set('advance_payment_discount_amount', Number(e.target.value))}
+                    />
+                  </Field>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </Card>
+      </div>
+
+      <Card
+        className="mt-4"
+        title="Payment accounts"
+        description="Shown to customers who choose advance payment"
+        icon={CardIcon}
+        delay={0.2}
+        actions={
+          <Button size="sm" icon={PlusIcon} onClick={() => openMethod(null)}>
+            Add account
+          </Button>
+        }
+      >
+        {paymentMethods.length === 0 ? (
+          <EmptyState emoji="💳" title="No payment accounts yet" text="Add JazzCash, Easypaisa or a bank account for advance payments." />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <AnimatePresence initial={false}>
+              {paymentMethods.map((m, i) => (
+                <motion.div
+                  key={m.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0, transition: { delay: i * 0.05 } }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="group relative rounded-[22px] border-2 border-line bg-white p-4 transition-colors hover:border-blush-300"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-berry-400 to-berry-600 font-display font-semibold text-white">
+                        {m.method_name.charAt(0).toUpperCase()}
+                      </span>
+                      <div>
+                        <p className="font-extrabold text-ink">{m.method_name}</p>
+                        <p className="text-xs font-semibold text-muted">{m.account_title}</p>
+                      </div>
+                    </div>
+                    <div className="flex">
+                      <IconAction icon={PencilIcon} label="Edit" tone="edit" onClick={() => openMethod(m)} />
+                      <IconAction icon={TrashIcon} label="Delete" tone="danger" onClick={() => setDeletingMethod(m)} />
+                    </div>
+                  </div>
+                  <p className="mt-3 font-mono text-sm font-bold tracking-wide text-ink">{m.account_number}</p>
+                  {m.iban && <p className="truncate font-mono text-xs text-muted">{m.iban}</p>}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </Card>
+
+      {/* sticky save bar, only when something changed */}
       <AnimatePresence>
-        {message && (
+        {dirty && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className={`px-4 py-3 rounded-lg mb-6 ${message.startsWith('Error') ? 'bg-red-900/50 border border-red-700 text-red-300' : 'bg-green-900/50 border border-green-700 text-green-300'}`}
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+            className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 items-center justify-between gap-3 rounded-full border border-line bg-white/95 py-2 pl-5 pr-2 shadow-pop backdrop-blur lg:left-[calc(50%+9rem)]"
           >
-            {message}
+            <p className="text-sm font-extrabold text-ink">You have unsaved changes</p>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => saved && setFormData(saved)} disabled={saving}>
+                Discard
+              </Button>
+              <Button size="sm" icon={CheckIcon} onClick={handleSave} loading={saving}>
+                Save
+              </Button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div className="space-y-6">
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-bold text-white mb-6">Store Information</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Store Name
-              </label>
-              <input
-                type="text"
-                name="store_name"
-                value={formData.store_name}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="MT Store"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                WhatsApp Number
-              </label>
-              <input
-                type="text"
-                name="whatsapp_number"
-                value={formData.whatsapp_number}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="3083403662"
-              />
-              <p className="text-gray-500 text-xs mt-2">
-                Enter 10 digit number without leading 0, e.g. 3083403662
-              </p>
-            </div>
-          </div>
+      <Sheet
+        open={methodSheet}
+        onClose={() => setMethodSheet(false)}
+        title={editingMethod ? 'Edit payment account' : 'Add payment account'}
+        subtitle="Customers send advance payments here"
+        icon={CardIcon}
+        onSubmit={handleSaveMethod}
+        saving={methodSaving}
+        submitLabel={editingMethod ? 'Save changes' : 'Add account'}
+      >
+        <div className="card-zs space-y-4 p-5">
+          <Field label="Method" required>
+            <input
+              className="admin-input"
+              value={methodForm.method_name}
+              onChange={(e) => setMethodForm((p) => ({ ...p, method_name: e.target.value }))}
+              placeholder="JazzCash, Easypaisa, Meezan Bank…"
+              autoFocus
+            />
+          </Field>
+          <Field label="Account title" required>
+            <input className="admin-input" value={methodForm.account_title} onChange={(e) => setMethodForm((p) => ({ ...p, account_title: e.target.value }))} placeholder="Ayesha Khan" />
+          </Field>
+          <Field label="Account number" required>
+            <input
+              className="admin-input font-mono"
+              value={methodForm.account_number}
+              onChange={(e) => setMethodForm((p) => ({ ...p, account_number: e.target.value }))}
+              placeholder="03001234567"
+            />
+          </Field>
+          <Field label="IBAN" hint="Optional, for bank transfers">
+            <input className="admin-input font-mono" value={methodForm.iban} onChange={(e) => setMethodForm((p) => ({ ...p, iban: e.target.value }))} placeholder="PK00XXXX0000000000000000" />
+          </Field>
         </div>
+      </Sheet>
 
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-bold text-white mb-6">Announcement Bar</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Announcement Text (White)
-              </label>
-              <input
-                type="text"
-                name="announcement_text_white"
-                value={formData.announcement_text_white}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Free delivery on orders above"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Announcement Text (Gold/Highlight)
-              </label>
-              <input
-                type="text"
-                name="announcement_text_gold"
-                value={formData.announcement_text_gold}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Rs. 1000!"
-              />
-              <p className="text-gray-500 text-xs mt-2">
-                This part will be shown in gold/yellow color after the white text
-              </p>
-            </div>
-
-            <div>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="announcement_bar_active"
-                  checked={formData.announcement_bar_active}
-                  onChange={handleChange}
-                  className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-gray-300">Announcement Bar Active</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-bold text-white mb-6">Homepage Hero</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Hero Title
-              </label>
-              <input
-                type="text"
-                name="hero_title"
-                value={formData.hero_title}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Premium Electronics"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Hero Subtitle
-              </label>
-              <input
-                type="text"
-                name="hero_subtitle"
-                value={formData.hero_subtitle}
-                onChange={handleChange}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Discover the latest gadgets and accessories"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-bold text-white mb-6">Payment Information</h2>
-
-          <div className="mb-6">
-            <h3 className="text-md font-semibold text-white mb-4">Advance Payment Discount</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    name="advance_payment_discount_enabled"
-                    checked={formData.advance_payment_discount_enabled}
-                    onChange={handleChange}
-                    className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-gray-300">Enable Advance Payment Discount</span>
-                </label>
-              </div>
-              {formData.advance_payment_discount_enabled && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Discount Amount (Rs.)
-                  </label>
-                  <input
-                    type="number"
-                    name="advance_payment_discount_amount"
-                    value={formData.advance_payment_discount_amount}
-                    onChange={handleChange}
-                    min="1"
-                    className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="200"
-                  />
-                  <p className="text-gray-500 text-xs mt-2">
-                    Customers who choose Advance Payment at checkout will save this amount
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t border-gray-700 pt-6 mt-6">
-            <h3 className="text-md font-semibold text-white mb-4">Payment Methods</h3>
-
-            {paymentMethods.length > 0 && (
-              <div className="space-y-3 mb-4">
-                {paymentMethods.map((method) => (
-                  <div key={method.id} className="flex items-center justify-between bg-gray-700 rounded-lg px-4 py-3">
-                    <div>
-                      <span className="text-white font-medium">{method.method_name}</span>
-                      <span className="text-gray-400 mx-2">|</span>
-                      <span className="text-gray-300">{method.account_title}</span>
-                      <span className="text-gray-400 mx-2">|</span>
-                      <span className="text-gray-300 font-mono text-sm">{method.account_number}</span>
-                      {method.iban && (
-                        <>
-                          <span className="text-gray-400 mx-2">|</span>
-                          <span className="text-gray-500 font-mono text-xs">{method.iban}</span>
-                        </>
-                      )}
-                    </div>
-                    <motion.button
-                      onClick={() => handleDeletePaymentMethod(method.id)}
-                      whileTap={{ scale: 0.95 }}
-                      className="text-red-400 hover:text-red-300 p-1"
-                      title="Delete"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </motion.button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {paymentMethods.length === 0 && !showPaymentForm && (
-              <p className="text-gray-500 text-sm mb-4">No payment methods added yet.</p>
-            )}
-
-            {showPaymentForm ? (
-              <div className="bg-gray-700 rounded-lg p-4">
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">
-                      Bank/Method Name *
-                    </label>
-                    <input
-                      type="text"
-                      name="method_name"
-                      value={paymentFormData.method_name}
-                      onChange={handlePaymentFormChange}
-                      placeholder="JazzCash"
-                      className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">
-                      Account Title *
-                    </label>
-                    <input
-                      type="text"
-                      name="account_title"
-                      value={paymentFormData.account_title}
-                      onChange={handlePaymentFormChange}
-                      placeholder="Hamza Kashif"
-                      className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">
-                      Account Number *
-                    </label>
-                    <input
-                      type="text"
-                      name="account_number"
-                      value={paymentFormData.account_number}
-                      onChange={handlePaymentFormChange}
-                      placeholder="0339-5002028"
-                      className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">
-                      IBAN (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      name="iban"
-                      value={paymentFormData.iban}
-                      onChange={handlePaymentFormChange}
-                      placeholder="PK10FAYS3412301000001037"
-                      className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <motion.button
-                    onClick={handleSavePaymentMethod}
-                    whileTap={{ scale: 0.97 }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Done
-                  </motion.button>
-                  <motion.button
-                    onClick={handleCancelPaymentForm}
-                    whileTap={{ scale: 0.97 }}
-                    className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Cancel
-                  </motion.button>
-                </div>
-              </div>
-            ) : (
-              <motion.button
-                onClick={handleAddPaymentMethod}
-                whileTap={{ scale: 0.97 }}
-                className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-              >
-                + Add Payment Method
-              </motion.button>
-            )}
-          </div>
-        </div>
-
-        <motion.button
-          onClick={handleSave}
-          disabled={loading}
-          whileTap={loading ? {} : { scale: 0.97 }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Saving...' : 'Save Settings'}
-        </motion.button>
-      </div>
+      <ConfirmDialog
+        open={!!deletingMethod}
+        title={`Delete ${deletingMethod?.method_name}?`}
+        message="Customers will no longer see this account at checkout."
+        loading={deleteBusy}
+        onConfirm={confirmDeleteMethod}
+        onCancel={() => setDeletingMethod(null)}
+      />
     </div>
   );
 }

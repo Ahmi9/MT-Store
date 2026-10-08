@@ -1,9 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { AnimatePresence } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import {
+  EmptyState,
+  FilterTabs,
+  IconAction,
+  PageHeader,
+  Pill,
+  Row,
+  RowActions,
+  SearchInput,
+  STATUS_TONE,
+  Table,
+  TableCard,
+  TableSkeleton,
+  Td,
+  Th,
+} from '@/components/admin/ui';
+import { EyeIcon } from '@/components/store/icons';
 
 interface Order {
   id: string;
@@ -19,27 +36,18 @@ interface Order {
   created_at: string;
 }
 
-type FilterType = 'all' | 'pending' | 'confirmed' | 'shipped' | 'delivered';
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-600 text-white',
-  confirmed: 'bg-blue-600 text-white',
-  shipped: 'bg-purple-600 text-white',
-  delivered: 'bg-green-600 text-white',
-  cancelled: 'bg-red-600 text-white',
-};
+type FilterType = 'all' | 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const fetchOrders = async () => {
-      const { data, error } = await publicClient
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data, error } = await publicClient.from('orders').select('*').order('created_at', { ascending: false });
 
       if (!error && data) {
         setOrders(data as Order[]);
@@ -50,139 +58,105 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  const filteredOrders = filter === 'all'
-    ? orders
-    : orders.filter((order) => order.status === filter);
+  const count = (status: string) => orders.filter((o) => o.status === status).length;
 
-  const counts = {
-    all: orders.length,
-    pending: orders.filter((o) => o.status === 'pending').length,
-    confirmed: orders.filter((o) => o.status === 'confirmed').length,
-    shipped: orders.filter((o) => o.status === 'shipped').length,
-    delivered: orders.filter((o) => o.status === 'delivered').length,
-  };
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return orders.filter((o) => {
+      if (filter !== 'all' && o.status !== filter) return false;
+      if (!q) return true;
+      return [o.order_number, o.customer_name, o.customer_phone, o.customer_city].some((v) => String(v ?? '').toLowerCase().includes(q));
+    });
+  }, [orders, filter, search]);
 
-  if (loading) {
-    return (
-      <div className="text-gray-400">Loading...</div>
-    );
-  }
+  const pendingValue = orders.filter((o) => o.status === 'pending').reduce((sum, o) => sum + Number(o.total), 0);
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
-        <motion.h1
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-3xl font-bold text-white"
-        >
-          Orders
-        </motion.h1>
-        <span className="text-gray-400">Total: {orders.length}</span>
-      </div>
+      <PageHeader
+        title="Orders"
+        subtitle={
+          count('pending')
+            ? `${count('pending')} waiting for you · Rs. ${pendingValue.toLocaleString()} pending`
+            : 'All caught up ✨'
+        }
+      />
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-        className="flex gap-2 mb-6"
-      >
-        {(['all', 'pending', 'confirmed', 'shipped', 'delivered'] as FilterType[]).map((f) => (
-          <motion.button
-            key={f}
-            onClick={() => setFilter(f)}
-            whileTap={{ scale: 0.95 }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === f
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-            }`}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-            <span className="ml-2 text-xs opacity-75">({counts[f]})</span>
-          </motion.button>
-        ))}
-      </motion.div>
-
-      {filteredOrders.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center text-gray-400 py-12"
-        >
-          No orders found
-        </motion.div>
+      {loading ? (
+        <TableSkeleton />
       ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="bg-gray-800 rounded-lg overflow-hidden"
+        <TableCard
+          toolbar={
+            <>
+              <FilterTabs
+                id="orders"
+                value={filter}
+                onChange={setFilter}
+                tabs={[
+                  { value: 'all', label: 'All', count: orders.length },
+                  { value: 'pending', label: 'Pending', count: count('pending') },
+                  { value: 'confirmed', label: 'Confirmed', count: count('confirmed') },
+                  { value: 'shipped', label: 'Shipped', count: count('shipped') },
+                  { value: 'delivered', label: 'Delivered', count: count('delivered') },
+                  { value: 'cancelled', label: 'Cancelled', count: count('cancelled') },
+                ]}
+              />
+              <SearchInput value={search} onChange={setSearch} placeholder="Order #, name, phone, city…" />
+            </>
+          }
         >
-          <table className="w-full">
-            <thead className="bg-gray-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Order #</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Customer</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Phone</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">City</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Total</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Payment</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Date</th>
-                <th className="px-4 py-3 text-left text-sm font-medium text-gray-300">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700">
-              {filteredOrders.map((order, index) => (
-                <motion.tr
-                  key={order.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(index * 0.04, 0.4) }}
-                  className="hover:bg-gray-750"
-                >
-                  <td className="px-4 py-3 text-white font-medium">{order.order_number}</td>
-                  <td className="px-4 py-3 text-white">{order.customer_name}</td>
-                  <td className="px-4 py-3 text-gray-300">{order.customer_phone}</td>
-                  <td className="px-4 py-3 text-gray-300">{order.customer_city}</td>
-                  <td className="px-4 py-3 text-white">Rs. {order.total.toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
-                      order.payment_type === 'cod'
-                        ? 'bg-gray-600 text-gray-300'
-                        : 'bg-yellow-500 text-yellow-900'
-                    }`}>
-                      {order.payment_type === 'cod' ? 'COD' : 'Advance'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <motion.span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[order.status] || 'bg-gray-600 text-white'}`}
-                      key={order.status}
-                      initial={{ opacity: 0.7 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                    </motion.span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400 text-sm">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/admin/dashboard/orders/${order.id}`}
-                      className="text-blue-400 hover:text-blue-300 text-sm"
-                    >
-                      View
-                    </Link>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </motion.div>
+          {orders.length === 0 ? (
+            <EmptyState emoji="🛍️" title="No orders yet" text="When customers check out, their orders will show up here." />
+          ) : visible.length === 0 ? (
+            <EmptyState emoji="🔍" title="No matching orders" text="Try another status or search." />
+          ) : (
+            <Table>
+              <thead>
+                <tr className="border-b border-line bg-blush-50/60">
+                  <Th>Order</Th>
+                  <Th>Customer</Th>
+                  <Th>City</Th>
+                  <Th>Total</Th>
+                  <Th>Payment</Th>
+                  <Th>Status</Th>
+                  <Th>Date</Th>
+                  <Th align="right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence initial={false}>
+                  {visible.map((order, index) => (
+                    <Row key={order.id} index={index} onClick={() => router.push(`/admin/dashboard/orders/${order.id}`)}>
+                      <Td className="font-extrabold text-ink">#{order.order_number}</Td>
+                      <Td>
+                        <p className="font-bold text-ink">{order.customer_name}</p>
+                        <p className="text-xs text-muted">{order.customer_phone}</p>
+                      </Td>
+                      <Td>{order.customer_city}</Td>
+                      <Td className="font-extrabold text-ink">Rs. {Number(order.total).toLocaleString()}</Td>
+                      <Td>
+                        <Pill tone={order.payment_type === 'cod' ? 'neutral' : 'pink'}>{order.payment_type === 'cod' ? 'COD' : 'Advance'}</Pill>
+                      </Td>
+                      <Td>
+                        <Pill tone={STATUS_TONE[order.status] ?? 'neutral'} dot>
+                          {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                        </Pill>
+                      </Td>
+                      <Td className="whitespace-nowrap text-muted">
+                        {new Date(order.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </Td>
+                      <Td align="right">
+                        <RowActions>
+                          <IconAction icon={EyeIcon} label="View order" tone="edit" href={`/admin/dashboard/orders/${order.id}`} />
+                        </RowActions>
+                      </Td>
+                    </Row>
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </Table>
+          )}
+        </TableCard>
       )}
     </div>
   );
