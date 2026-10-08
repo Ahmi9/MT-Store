@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
 import { BRAND } from '@/lib/brand';
 import { AdminToastProvider } from '@/components/admin/ui';
+import MfaGate from '@/components/admin/MfaGate';
 import {
   BagIcon,
   ExternalIcon,
@@ -36,6 +37,7 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
   const [email, setEmail] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [needsMfa, setNeedsMfa] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -53,6 +55,10 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
       const { data: adminRow } = await publicClient.from('admins').select('user_id').eq('user_id', session.user.id).maybeSingle();
       setEmail(session.user.email ?? null);
       setDenied(!adminRow);
+      if (adminRow) {
+        const { data: aal } = await publicClient.auth.mfa.getAuthenticatorAssuranceLevel();
+        setNeedsMfa(aal?.currentLevel !== 'aal2');
+      }
       setLoading(false);
     };
     checkUser();
@@ -77,6 +83,10 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
         </div>
       </div>
     );
+  }
+
+  if (needsMfa && !denied) {
+    return <MfaGate onDone={() => setNeedsMfa(false)} onSignOut={handleLogout} />;
   }
 
   if (denied) {

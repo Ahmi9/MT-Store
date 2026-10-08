@@ -19,13 +19,21 @@ export function getServerClient(): SupabaseClient {
   return serverClient;
 }
 
-/** True when the request carries the access token of a user listed in `admins`. */
+/** True when the request carries an MFA-verified access token of a user listed in `admins`. */
 export async function isAdminRequest(request: Request): Promise<boolean> {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (!token) return false;
   const db = getServerClient();
   const { data, error } = await db.auth.getUser(token);
   if (error || !data.user) return false;
+  // getUser() has verified the token, so its claims can be trusted.
+  // Admins must have passed two-factor auth (assurance level aal2).
+  try {
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+    if (claims.aal !== 'aal2') return false;
+  } catch {
+    return false;
+  }
   const { data: row } = await db.from('admins').select('user_id').eq('user_id', data.user.id).maybeSingle();
   return !!row;
 }

@@ -9,7 +9,7 @@ const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slic
 // Places an order. Everything money- or stock-related is computed inside the
 // checkout() database function; the browser only says what it wants to buy.
 export async function POST(request: Request) {
-  if (rateLimited(`order:${clientIp(request)}`, 8, 10 * 60_000)) {
+  if (await rateLimited(`order:${clientIp(request)}`, 8, 10 * 60)) {
     return NextResponse.json({ error: 'Too many orders from this connection. Please try again later.' }, { status: 429 });
   }
   try {
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     )) as { order_number: string; token: string; total: number };
     return NextResponse.json({ order_number: result.order_number, token: result.token, total: result.total });
   } catch (err) {
-    if (err instanceof CheckoutError) return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
+    if (err instanceof CheckoutError) return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === 'server' ? 503 : 400 });
     console.error('order failed:', err);
     return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 });
   }

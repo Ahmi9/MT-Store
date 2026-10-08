@@ -39,6 +39,7 @@ const MESSAGES: Record<string, (detail?: string, hint?: string) => string> = {
   coupon_used_up: () => 'This coupon has reached its usage limit.',
   coupon_min_order: (d) => `This coupon needs a minimum order of Rs. ${Number(d).toLocaleString('en-PK')}.`,
   invalid_customer: () => 'Please check your name, phone, address and city.',
+  too_many_orders: () => 'You already have 3 open orders with this phone number. We’ll contact you to confirm them — or message us on WhatsApp.',
 };
 
 export class CheckoutError extends Error {

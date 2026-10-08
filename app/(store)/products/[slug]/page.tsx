@@ -533,17 +533,21 @@ function Reviews({
   const submit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
-    const { error } = await publicClient.from('product_reviews').insert({
-      product_id: productId,
-      customer_name: form.customer_name.trim(),
-      customer_city: form.customer_city.trim() || null,
-      review_text: form.review_text.trim(),
-      rating: form.rating,
-      // new reviews wait for an admin to approve them
-      is_approved: false,
+    const res = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product_id: productId,
+        customer_name: form.customer_name,
+        customer_city: form.customer_city,
+        review_text: form.review_text,
+        rating: form.rating,
+      }),
     });
+    const result = await res.json().catch(() => ({}));
+    const error = res.ok ? null : result.error || 'Couldn’t post your review. Please try again.';
     if (error) {
-      setSubmitError('Couldn’t post your review. Please try again.');
+      setSubmitError(error);
     } else {
       setSubmitError('');
       setForm({ rating: 0, customer_name: '', customer_city: '', review_text: '' });

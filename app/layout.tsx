@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fredoka, Nunito } from "next/font/google";
 import Script from "next/script";
+import { headers } from "next/headers";
 import "./globals.css";
 import PageLoader from "@/components/PageLoader";
 import { BRAND } from "@/lib/brand";
@@ -28,11 +29,14 @@ export const viewport: Viewport = {
   themeColor: "#ff80aa",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // set by proxy.ts; lets the analytics snippets pass the CSP
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -47,8 +51,9 @@ export default function RootLayout({
             <Script
               src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA4_ID}`}
               strategy="afterInteractive"
+              nonce={nonce}
             />
-            <Script id="ga4-init" strategy="afterInteractive">
+            <Script id="ga4-init" strategy="afterInteractive" nonce={nonce}>
               {`window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
@@ -58,7 +63,7 @@ export default function RootLayout({
         )}
         {process.env.NEXT_PUBLIC_META_PIXEL_ID && (
           <>
-            <Script id="meta-pixel-init" strategy="afterInteractive">
+            <Script id="meta-pixel-init" strategy="afterInteractive" nonce={nonce}>
               {`!function(f,b,e,v,n,t,s)
                 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
                 n.callMethod.apply(n,arguments):n.queue.push(arguments)};

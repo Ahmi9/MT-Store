@@ -6,8 +6,12 @@
 --   2. Row Level Security on every store table (drops the old policies first)
 --   3. orders / order_items / coupons are no longer readable by the public
 --   4. checkout() — the server computes prices, discounts and stock itself
---   5. reviews are moderated (pending until an admin approves)
+--   5. reviews are moderated (pending until an admin approves) and only
+--      come in through the server (rate limited)
 --   6. product-images uploads are admin-only
+--   7. admins must use two-factor auth (TOTP): is_admin() needs an aal2 session
+--   8. database-backed rate limits, per-phone order limits, and stock goes
+--      back when an order is cancelled
 
 begin;
 
@@ -29,7 +33,9 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (select 1 from public.admins where user_id = auth.uid());
+  -- admin AND signed in with a second factor
+  select exists (select 1 from public.admins where user_id = auth.uid())
+     and coalesce(auth.jwt() ->> 'aal', 'aal1') = 'aal2';
 $$;
 
 revoke all on function public.is_admin() from public;
@@ -40,6 +46,10 @@ grant execute on function public.is_admin() to anon, authenticated, service_role
 -- secret used in order-confirmation links instead of the guessable order number
 alter table public.orders add column if not exists lookup_token uuid not null default gen_random_uuid();
 create unique index if not exists orders_lookup_token_key on public.orders (lookup_token);
+
+-- stock_reserved: this order took stock when it was placed (orders placed
+-- before this migration never did, so cancelling them must not add stock)
+alter table public.orders add column if not exists stock_reserved boolean not null default false;
 
 -- new reviews wait for approval
 alter table public.product_reviews alter column is_approved set default false;
@@ -103,14 +113,9 @@ create policy "catalog admin" on public.product_attributes for all to authentica
 create policy "catalog read" on public.product_attribute_values for select using (true);
 create policy "catalog admin" on public.product_attribute_values for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
--- reviews: approved ones are public; anyone may submit one, it starts pending
+-- reviews: approved ones are public. Customers submit through /api/reviews
+-- (service role, rate limited) — there is no public insert policy.
 create policy "reviews read" on public.product_reviews for select using (is_approved or public.is_admin());
-create policy "reviews submit" on public.product_reviews for insert to anon, authenticated
-  with check (
-    is_approved = false
-    and rating between 1 and 5
-    and exists (select 1 from public.products p where p.id = product_id and p.is_active)
-  );
 create policy "reviews admin" on public.product_reviews for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- orders & coupons: admins only (checkout goes through checkout() on the server)
@@ -157,7 +162,85 @@ create policy "product images admin update" on storage.objects for update to aut
 create policy "product images admin delete" on storage.objects for delete to authenticated
   using (bucket_id = 'product-images' and public.is_admin());
 
--- ───────────────────────── 5. Checkout ─────────────────────────
+-- ───────────────────────── 5. Rate limits ─────────────────────────
+-- Shared by every server instance (an in-memory counter resets per instance).
+
+create table if not exists public.rate_limits (
+  key text primary key,
+  count integer not null,
+  reset_at timestamptz not null
+);
+alter table public.rate_limits enable row level security;  -- no policies: service role only
+
+create or replace function public.hit_rate_limit(p_key text, p_limit integer, p_window_seconds integer)
+returns boolean  -- true when the caller is over the limit
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  hits integer;
+begin
+  insert into public.rate_limits as r (key, count, reset_at)
+  values (p_key, 1, now() + make_interval(secs => p_window_seconds))
+  on conflict (key) do update set
+    count = case when r.reset_at < now() then 1 else r.count + 1 end,
+    reset_at = case when r.reset_at < now() then now() + make_interval(secs => p_window_seconds) else r.reset_at end
+  returning count into hits;
+
+  if random() < 0.01 then
+    delete from public.rate_limits where reset_at < now() - interval '1 day';
+  end if;
+
+  return hits > p_limit;
+end;
+$$;
+
+revoke all on function public.hit_rate_limit(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.hit_rate_limit(text, integer, integer) to service_role;
+
+-- ───────────────────────── 6. Stock back on cancel ─────────────────────────
+
+create or replace function public.orders_restock()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  it record;
+  direction integer;
+begin
+  if not new.stock_reserved or new.status is not distinct from old.status then
+    return new;
+  end if;
+  if new.status = 'cancelled' then
+    direction := 1;   -- put it back
+  elsif old.status = 'cancelled' then
+    direction := -1;  -- re-opened: take it again
+  else
+    return new;
+  end if;
+
+  for it in select product_id, quantity, selected_variant from public.order_items where order_id = new.id
+  loop
+    update public.products set stock = greatest(stock + direction * it.quantity, 0) where id = it.product_id;
+    if it.selected_variant is not null then
+      update public.product_variants
+      set stock = greatest(stock + direction * it.quantity, 0)
+      where product_id = it.product_id and variant_combination = it.selected_variant;
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_restock on public.orders;
+create trigger orders_restock
+  after update of status on public.orders
+  for each row execute function public.orders_restock();
+
+-- ───────────────────────── 7. Checkout ─────────────────────────
 --
 -- payload = {
 --   items: [{ product_id, quantity, variant }],
@@ -271,7 +354,8 @@ begin
   end loop;
 
   select * into settings from public.site_settings where id = 1;
-  if pay = 'advance' and coalesce(settings.advance_payment_discount_enabled, false) then
+  -- the store promises the advance discount on orders of Rs. 1,000 and up
+  if pay = 'advance' and coalesce(settings.advance_payment_discount_enabled, false) and subtotal >= 1000 then
     advance_discount := coalesce(settings.advance_payment_discount_amount, 0);
   end if;
 
@@ -325,9 +409,21 @@ begin
     raise exception using message = 'invalid_customer';
   end if;
 
+  -- at most 3 open orders per phone number per day (stops fake orders from
+  -- locking up all the stock)
+  if (
+    select count(*) from public.orders o
+    where o.status = 'pending'
+      and o.created_at > now() - interval '24 hours'
+      and right(regexp_replace(o.customer_phone, '[^0-9]', '', 'g'), 10)
+          = right(regexp_replace(cust ->> 'phone', '[^0-9]', '', 'g'), 10)
+  ) >= 3 then
+    raise exception using message = 'too_many_orders';
+  end if;
+
   insert into public.orders (
     customer_name, customer_phone, customer_email, customer_address, customer_city,
-    payment_type, subtotal, discount, coupon_code, coupon_discount, total, status
+    payment_type, subtotal, discount, coupon_code, coupon_discount, total, status, stock_reserved
   ) values (
     btrim(cust ->> 'name'),
     btrim(cust ->> 'phone'),
@@ -340,7 +436,8 @@ begin
     case when has_coupon then coupon.code end,
     coupon_discount,
     total,
-    'pending'
+    'pending',
+    true
   )
   returning * into new_order;
 

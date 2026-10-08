@@ -13,7 +13,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *  - { order_number, phone } → tracking details only (no address/email)
  */
 export async function POST(request: Request) {
-  if (rateLimited(`lookup:${clientIp(request)}`, 20, 10 * 60_000)) {
+  if (await rateLimited(`lookup:${clientIp(request)}`, 20, 10 * 60)) {
     return NextResponse.json({ error: 'Too many attempts. Please try again in a few minutes.' }, { status: 429 });
   }
   const body = await request.json().catch(() => ({}));
