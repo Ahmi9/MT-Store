@@ -355,7 +355,7 @@ export default function ProductPage() {
         </div>
       </div>
 
-      <Reviews productId={product.id} reviews={reviews} rating={rating} onNew={setReviews} />
+      <Reviews productId={product.id} reviews={reviews} rating={rating} />
 
       {related.length > 0 && (
         <section className="container-zs py-12">
@@ -515,12 +515,10 @@ function Reviews({
   productId,
   reviews,
   rating,
-  onNew,
 }: {
   productId: string;
   reviews: Review[];
   rating: { avg: number; dist: number[] } | null;
-  onNew: (r: Review[]) => void;
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState({ rating: 0, customer_name: '', customer_city: '', review_text: '' });
@@ -528,6 +526,7 @@ function Reviews({
   const [submitting, setSubmitting] = useState(false);
   const [thanks, setThanks] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   const canSubmit = form.rating > 0 && form.customer_name.trim() && form.review_text.trim();
 
@@ -540,16 +539,13 @@ function Reviews({
       customer_city: form.customer_city.trim() || null,
       review_text: form.review_text.trim(),
       rating: form.rating,
-      is_approved: true,
+      // new reviews wait for an admin to approve them
+      is_approved: false,
     });
-    if (!error) {
-      const { data } = await publicClient
-        .from('product_reviews')
-        .select('id, customer_name, customer_city, review_text, rating, created_at')
-        .eq('product_id', productId)
-        .eq('is_approved', true)
-        .order('created_at', { ascending: false });
-      onNew((data as Review[]) ?? []);
+    if (error) {
+      setSubmitError('Couldn’t post your review. Please try again.');
+    } else {
+      setSubmitError('');
       setForm({ rating: 0, customer_name: '', customer_city: '', review_text: '' });
       setFormOpen(false);
       setThanks(true);
@@ -610,7 +606,7 @@ function Reviews({
           <AnimatePresence>
             {thanks && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-4 rounded-2xl bg-mint px-5 py-4 font-bold text-emerald-800">
-                Thank you! Your review is live ✨
+                Thank you! Your review will appear once it’s approved ✨
               </motion.div>
             )}
           </AnimatePresence>
@@ -647,6 +643,7 @@ function Reviews({
                     value={form.review_text}
                     onChange={(e) => setForm((f) => ({ ...f, review_text: e.target.value }))}
                   />
+                  {submitError && <p className="text-sm font-bold text-berry-700">{submitError}</p>}
                   <div className="flex gap-3">
                     <button type="button" onClick={submit} disabled={!canSubmit || submitting} className="btn-primary px-6 py-3">
                       {submitting ? 'Posting…' : 'Post review'}

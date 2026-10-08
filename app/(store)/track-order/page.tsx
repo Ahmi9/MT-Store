@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
-import { publicClient } from '@/lib/supabase';
 import { getSiteSettings } from '@/lib/catalog';
 import { formatPrice } from '@/lib/cart';
 import { formatWhatsAppDisplay, formatWhatsAppLink } from '@/lib/utils';
@@ -13,12 +12,11 @@ import { CheckIcon, GiftIcon, MapPinIcon, PackageIcon, SearchIcon, TruckIcon, Wh
 interface TrackedOrder {
   order_number: string;
   customer_name: string;
-  customer_phone: string;
   customer_city: string;
   status: string;
   total: number;
   created_at: string;
-  postex_tracking_number: string | null;
+  tracking_number: string | null;
 }
 
 const FLOW = [
@@ -35,7 +33,7 @@ export default function TrackOrderPage() {
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const [result, setResult] = useState<TrackedOrder | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'notfound'>('idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'notfound' | 'limited'>('idle');
 
   useEffect(() => {
     getSiteSettings().then((s) => setWhatsapp(s?.whatsapp_number ?? null));
@@ -47,17 +45,17 @@ export default function TrackOrderPage() {
     if (!number || digits(phone).length < 10) return;
     setStatus('loading');
     setResult(null);
-    const { data } = await publicClient
-      .from('orders')
-      .select('order_number, customer_name, customer_phone, customer_city, status, total, created_at, postex_tracking_number')
-      .eq('order_number', number)
-      .maybeSingle();
-    // Only reveal the order when the phone number matches the one on it
-    if (data && digits(data.customer_phone) === digits(phone)) {
-      setResult(data as TrackedOrder);
+    // the server checks the phone number and only returns tracking details
+    const res = await fetch('/api/orders/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_number: number, phone }),
+    });
+    if (res.ok) {
+      setResult((await res.json()) as TrackedOrder);
       setStatus('idle');
     } else {
-      setStatus('notfound');
+      setStatus(res.status === 429 ? 'limited' : 'notfound');
     }
   };
 
@@ -85,6 +83,11 @@ export default function TrackOrderPage() {
         </motion.form>
 
         <AnimatePresence mode="wait">
+          {status === 'limited' && (
+            <motion.p key="lim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6 rounded-[24px] bg-blush-100 p-5 text-center font-bold text-berry-700">
+              Too many tries — please wait a few minutes and try again.
+            </motion.p>
+          )}
           {status === 'notfound' && (
             <motion.div
               key="nf"
@@ -142,9 +145,9 @@ export default function TrackOrderPage() {
                 </div>
               )}
 
-              {result.postex_tracking_number && (
+              {result.tracking_number && (
                 <p className="mt-6 rounded-2xl bg-lilac/60 p-4 text-sm font-bold text-ink-soft">
-                  Courier tracking number: <span className="font-mono text-ink">{result.postex_tracking_number}</span>
+                  Courier tracking number: <span className="font-mono text-ink">{result.tracking_number}</span>
                 </p>
               )}
             </motion.div>

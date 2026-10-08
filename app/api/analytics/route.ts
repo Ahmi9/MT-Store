@@ -1,5 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { NextResponse } from 'next/server';
+import { isAdminRequest } from '@/lib/supabase-server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -95,14 +96,8 @@ async function getActiveUsers(): Promise<number> {
   const requestBody = { metrics: [{ name: 'activeUsers' }] };
   const apiUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${PROPERTY_ID}:runRealtimeReport`;
 
-  console.log('=== REALTIME API ===');
-  console.log('URL:', apiUrl);
-  console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
   try {
     const response = await fetchWithAuth(apiUrl, requestBody);
-
-    console.log('Raw response:', JSON.stringify(response, null, 2));
 
     return response.rows?.[0]?.metricValues?.[0]?.value ?? 0;
   } catch (err) {
@@ -121,14 +116,8 @@ async function getSessions(startDate: string, endDate: string): Promise<number> 
   };
   const apiUrl = `https://analyticsdata.googleapis.com/v1beta/properties/${PROPERTY_ID}:runReport`;
 
-  console.log('=== STANDARD REPORT API ===');
-  console.log('URL:', apiUrl);
-  console.log('Request body:', JSON.stringify(requestBody, null, 2));
-
   try {
     const response = await fetchWithAuth(apiUrl, requestBody);
-
-    console.log('Raw response:', JSON.stringify(response, null, 2));
 
     return response.rows?.[0]?.metricValues?.[0]?.value ?? 0;
   } catch (err) {
@@ -146,21 +135,21 @@ function getDateString(daysAgo: number): string {
   return date.toISOString().split('T')[0];
 }
 
+// Details stay in the server log; the browser only learns that it failed.
 function createErrorResponse(step: string, errorMessage: string, details?: string) {
-  const response: GA4Error = { error: errorMessage, step };
-  if (details) response.details = details;
+  console.error(`GA4 [${step}]`, errorMessage, details ?? '');
+  const response: GA4Error = { error: 'Analytics unavailable', step: 'analytics' };
   return NextResponse.json(response, { status: 500 });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const today = getDateString(0);
   const yesterday = getDateString(1);
   const last7DaysStart = getDateString(6);
-
-  console.log('=== GA4 ANALYTICS REQUEST ===');
-  console.log('today:', today);
-  console.log('yesterday:', yesterday);
-  console.log('last7DaysStart:', last7DaysStart);
 
   try {
     const [activeUsersNow, todaySessions, yesterdaySessions, last7DaysSessions] =

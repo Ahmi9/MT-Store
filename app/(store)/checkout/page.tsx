@@ -28,16 +28,21 @@ interface SiteSettings {
   advance_payment_discount_amount: number;
 }
 
-interface Coupon {
-  id: number;
-  code: string;
-  discount_type: 'percentage' | 'fixed';
-  discount_value: number;
-  min_order_amount: number;
-  max_uses: number | null;
-  used_count: number;
-  expiry_date: string | null;
-  is_active: boolean;
+interface QuoteLine {
+  product_id: string;
+  price: number;
+  quantity: number;
+  total: number;
+  variant: Record<string, string> | null;
+}
+
+interface Quote {
+  lines: QuoteLine[];
+  subtotal: number;
+  advance_discount: number;
+  coupon_discount: number;
+  total: number;
+  coupon: { code: string } | null;
 }
 
 type PaymentType = 'cod' | 'advance';
@@ -64,8 +69,10 @@ export default function CheckoutPage() {
 
   const [paymentType, setPaymentType] = useState<PaymentType>('cod');
   const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [couponMessage, setCouponMessage] = useState({ type: '', text: '' });
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteError, setQuoteError] = useState('');
   const initiateCheckoutFired = useRef(false);
 
   useEffect(() => {
@@ -109,62 +116,75 @@ export default function CheckoutPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const subtotal = cartSubtotal(cartItems);
-  const advanceDiscount =
-    settings?.advance_payment_discount_enabled && paymentType === 'advance' ? Number(settings.advance_payment_discount_amount) || 200 : 0;
-  const couponDiscount = appliedCoupon
-    ? appliedCoupon.discount_type === 'percentage'
-      ? Math.round(subtotal * (appliedCoupon.discount_value / 100))
-      : Math.min(appliedCoupon.discount_value, subtotal)
-    : 0;
-  const total = subtotal - advanceDiscount - couponDiscount;
+  const cartPayload = cartItems.map((item) => ({
+    product_id: item.id,
+    quantity: item.quantity,
+    variant: item.selectedVariant ?? null,
+  }));
+  const cartSignature = JSON.stringify(cartPayload);
+
+  // Ask the server for the real prices whenever the bag, payment type or
+  // coupon changes. These are the numbers the order will actually use.
+  const requestQuote = async (code: string | null) => {
+    const res = await fetch('/api/checkout/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: cartPayload, payment_type: paymentType, coupon_code: code }),
+    });
+    const data = await res.json().catch(() => ({ error: 'Something went wrong.' }));
+    return { ok: res.ok, data } as { ok: boolean; data: Quote & { error?: string; code?: string } };
+  };
+
+  useEffect(() => {
+    if (!hydrated || cartItems.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const { ok, data } = await requestQuote(appliedCode);
+      if (cancelled) return;
+      if (ok) {
+        setQuote(data);
+        setQuoteError('');
+      } else if (appliedCode && data.code?.startsWith('coupon_')) {
+        // coupon stopped applying (e.g. bag dropped below the minimum)
+        setAppliedCode(null);
+        setCouponMessage({ type: 'error', text: data.error ?? 'Coupon removed' });
+      } else {
+        setQuote(null);
+        setQuoteError(data.error ?? 'Couldn’t check prices.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, cartSignature, paymentType, appliedCode]);
+
+  const subtotal = quote?.subtotal ?? cartSubtotal(cartItems);
+  const advanceDiscount = quote?.advance_discount ?? 0;
+  const couponDiscount = quote?.coupon_discount ?? 0;
+  const total = quote?.total ?? subtotal;
+  const linePrice = (index: number) => quote?.lines[index]?.price ?? cartItems[index]?.price ?? 0;
 
   const handleApplyCoupon = async () => {
-    if (!couponInput.trim()) {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) {
       setCouponMessage({ type: 'error', text: 'Please enter a coupon code' });
       return;
     }
-
     setCouponMessage({ type: '', text: '' });
-
-    const { data, error } = await publicClient
-      .from('coupons')
-      .select('*')
-      .ilike('code', couponInput.trim())
-      .eq('is_active', true)
-      .single();
-
-    if (error || !data) {
-      setCouponMessage({ type: 'error', text: 'Invalid coupon code' });
+    const { ok, data } = await requestQuote(code);
+    if (!ok) {
+      setCouponMessage({ type: 'error', text: data.error ?? 'Invalid coupon code' });
       return;
     }
-
-    const coupon = data as Coupon;
-
-    if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) {
-      setCouponMessage({ type: 'error', text: 'This coupon has expired' });
-      return;
-    }
-
-    if (coupon.max_uses !== null && coupon.used_count >= coupon.max_uses) {
-      setCouponMessage({ type: 'error', text: 'This coupon has reached its usage limit' });
-      return;
-    }
-
-    if (coupon.min_order_amount && subtotal < coupon.min_order_amount) {
-      setCouponMessage({ type: 'error', text: `Minimum order of ${formatPrice(coupon.min_order_amount)} required for this coupon` });
-      return;
-    }
-
-    setAppliedCoupon(coupon);
-    const discountAmount =
-      coupon.discount_type === 'percentage' ? Math.round(subtotal * (coupon.discount_value / 100)) : Math.min(coupon.discount_value, subtotal);
-    setCouponMessage({ type: 'success', text: `Yay! You saved ${formatPrice(discountAmount)} 🎉` });
+    setQuote(data);
+    setAppliedCode(code);
+    setCouponMessage({ type: 'success', text: `Yay! You saved ${formatPrice(data.coupon_discount)} 🎉` });
     setCouponInput('');
   };
 
   const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
+    setAppliedCode(null);
     setCouponMessage({ type: '', text: '' });
   };
 
@@ -176,79 +196,43 @@ export default function CheckoutPage() {
       setError('Please fill in all required fields');
       return;
     }
+    if (formData.phone.replace(/\D/g, '').length < 10) {
+      setError('Please enter a valid phone number');
+      return;
+    }
 
     setLoading(true);
-
     try {
-      const { data: orderData, error: orderError } = await publicClient
-        .from('orders')
-        .insert({
-          customer_name: formData.fullName.trim(),
-          customer_phone: formData.phone.trim(),
-          customer_email: formData.email.trim() || null,
-          customer_address: formData.address.trim(),
-          customer_city: formData.city.trim(),
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: cartPayload,
           payment_type: paymentType,
-          subtotal,
-          discount: advanceDiscount + couponDiscount,
-          total,
-          coupon_code: appliedCoupon?.code || null,
-          status: 'pending',
-        })
-        .select('id, order_number')
-        .single();
-
-      if (orderError) {
-        throw new Error(orderError.message);
-      }
-
-      if (appliedCoupon) {
-        await publicClient
-          .from('coupons')
-          .update({ used_count: appliedCoupon.used_count + 1 })
-          .eq('id', appliedCoupon.id);
-      }
-
-      const orderItems = cartItems.map((item) => {
-        const price = parseFloat(item.price.toString());
-        const quantity = parseInt(item.quantity.toString());
-        return {
-          order_id: orderData.id,
-          product_id: item.id,
-          product_name: item.name,
-          product_image: item.image || '',
-          price,
-          quantity,
-          total: price * quantity,
-          selected_variant: item.selectedVariant || null,
-        };
+          coupon_code: appliedCode,
+          customer: {
+            name: formData.fullName,
+            phone: formData.phone,
+            email: formData.email,
+            address: formData.address,
+            city: formData.city,
+          },
+        }),
       });
-
-      const { error: itemsError } = await publicClient.from('order_items').insert(orderItems);
-
-      if (itemsError) {
-        throw new Error(itemsError.message);
-      }
-
-      for (const item of cartItems) {
-        const { data: productData } = await publicClient.from('products').select('stock').eq('id', item.id).single();
-
-        if (productData) {
-          const currentStock = productData.stock || 0;
-          const orderedQty = parseInt(item.quantity.toString());
-          const newStock = Math.max(0, currentStock - orderedQty);
-
-          await publicClient.from('products').update({ stock: newStock }).eq('id', item.id);
-        }
-      }
-
-      const orderNumber = orderData.order_number;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to place order. Please try again.');
 
       // Written directly (no cartUpdated event) so the empty-cart redirect
       // above doesn't race the navigation to the confirmation page.
       localStorage.setItem('cart', JSON.stringify([]));
-
-      window.location.href = `/order-confirmation/${orderNumber}`;
+      // The secret token goes to sessionStorage, not the URL — page URLs are
+      // sent to Google Analytics and the Meta Pixel.
+      try {
+        sessionStorage.setItem(`zs-order-token:${data.order_number}`, data.token);
+      } catch {
+        // storage blocked: the confirmation page falls back to asking for the phone number
+      }
+      window.location.href = `/order-confirmation/${encodeURIComponent(data.order_number)}`;
     } catch (err) {
       setError(err instanceof Error && err.message ? err.message : 'Failed to place order. Please try again.');
       setLoading(false);
@@ -367,7 +351,7 @@ export default function CheckoutPage() {
             </AnimatePresence>
           </Section>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full py-4 text-base lg:hidden">
+          <button type="submit" disabled={loading || !quote} className="btn-primary w-full py-4 text-base lg:hidden">
             {loading ? (
               <>
                 <Spinner /> Placing your order…
@@ -385,7 +369,7 @@ export default function CheckoutPage() {
             </div>
             <div className="p-6">
               <ul className="max-h-[300px] space-y-4 overflow-y-auto pr-1">
-                {cartItems.map((item) => (
+                {cartItems.map((item, index) => (
                   <li key={lineKey(item)} className="flex gap-3">
                     <div className="relative h-16 w-16 flex-shrink-0">
                       <div className="h-full w-full overflow-hidden rounded-2xl bg-blush-100">
@@ -405,12 +389,12 @@ export default function CheckoutPage() {
                         </p>
                       )}
                     </div>
-                    <p className="text-sm font-extrabold text-ink">{formatPrice(item.price * item.quantity)}</p>
+                    <p className="text-sm font-extrabold text-ink">{formatPrice(linePrice(index) * item.quantity)}</p>
                   </li>
                 ))}
               </ul>
 
-              {!appliedCoupon ? (
+              {!appliedCode ? (
                 <div className="mt-5 border-t border-line pt-5">
                   <div className="flex gap-2">
                     <div className="relative flex-1">
@@ -450,7 +434,7 @@ export default function CheckoutPage() {
                 <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-5 flex items-center justify-between rounded-2xl border-2 border-dashed border-emerald-300 bg-mint/60 px-4 py-3">
                   <div>
                     <p className="flex items-center gap-1.5 text-sm font-extrabold text-emerald-800">
-                      <TagIcon className="h-4 w-4" /> {appliedCoupon.code}
+                      <TagIcon className="h-4 w-4" /> {appliedCode}
                     </p>
                     <p className="text-xs font-semibold text-emerald-700">{couponMessage.text || 'Coupon applied'}</p>
                   </div>
@@ -471,11 +455,27 @@ export default function CheckoutPage() {
                   )}
                   {couponDiscount > 0 && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-                      <Row label={`Coupon (${appliedCoupon?.code})`} value={`−${formatPrice(couponDiscount)}`} accent />
+                      <Row label={`Coupon (${appliedCode})`} value={`−${formatPrice(couponDiscount)}`} accent />
                     </motion.div>
                   )}
                 </AnimatePresence>
               </dl>
+
+              <AnimatePresence>
+                {quoteError && (
+                  <motion.p
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-4 rounded-2xl bg-blush-100 px-4 py-3 text-sm font-bold text-berry-700"
+                  >
+                    {quoteError}{' '}
+                    <Link href="/cart" className="underline">
+                      Update bag
+                    </Link>
+                  </motion.p>
+                )}
+              </AnimatePresence>
 
               <div className="mt-4 flex items-end justify-between border-t border-dashed border-blush-300 pt-4">
                 <span className="font-bold text-ink-soft">Total</span>
@@ -484,7 +484,7 @@ export default function CheckoutPage() {
                 </motion.span>
               </div>
 
-              <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary mt-6 hidden w-full py-4 text-base lg:flex">
+              <button type="button" onClick={handleSubmit} disabled={loading || !quote} className="btn-primary mt-6 hidden w-full py-4 text-base lg:flex">
                 {loading ? (
                   <>
                     <Spinner /> Placing your order…

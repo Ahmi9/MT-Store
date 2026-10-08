@@ -231,7 +231,10 @@ export default function DashboardPage() {
 
     const fetchGA4Stats = async () => {
       try {
-        const response = await fetch('/api/analytics');
+        const { data: { session } } = await publicClient.auth.getSession();
+        const response = await fetch('/api/analytics', {
+          headers: { Authorization: `Bearer ${session?.access_token ?? ''}` },
+        });
         const data = await response.json();
         if (data.error) {
           setGa4Error(true);

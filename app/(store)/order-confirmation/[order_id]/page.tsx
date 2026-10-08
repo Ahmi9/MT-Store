@@ -10,13 +10,15 @@ import { formatPrice } from '@/lib/cart';
 import PaymentMethodCard, { type PaymentMethod } from '@/components/store/PaymentMethodCard';
 import { ArrowRightIcon, CashIcon, CopyIcon, GiftIcon, MapPinIcon, PackageIcon, TruckIcon, WhatsAppIcon } from '@/components/store/icons';
 
+// Returned by /api/orders/lookup. Contact details only come back with the
+// secret link token from checkout, not with a phone-number lookup.
 interface Order {
-  id: string;
   order_number: string;
+  full: boolean;
   customer_name: string;
-  customer_phone: string;
-  customer_email: string | null;
-  customer_address: string;
+  customer_phone?: string;
+  customer_email?: string | null;
+  customer_address?: string;
   customer_city: string;
   payment_type: 'cod' | 'advance';
   subtotal: number;
@@ -28,7 +30,6 @@ interface Order {
 
 interface OrderItem {
   id: string;
-  order_id: string;
   product_id: string;
   product_name: string;
   product_image: string;
@@ -40,7 +41,7 @@ interface OrderItem {
 
 export default function OrderConfirmationPage() {
   const params = useParams();
-  const orderId = params.order_id as string;
+  const orderId = decodeURIComponent(params.order_id as string);
 
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
@@ -49,7 +50,33 @@ export default function OrderConfirmationPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [needPhone, setNeedPhone] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [checking, setChecking] = useState(false);
   const purchaseFired = useRef(false);
+
+  const lookup = async (body: Record<string, string>) => {
+    const res = await fetch('/api/orders/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_number: orderId, ...body }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setOrder(data as Order);
+    setOrderItems((data.items ?? []) as OrderItem[]);
+    setNotFound(false);
+    return true;
+  };
+
+  const verifyPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChecking(true);
+    const ok = await lookup({ phone });
+    setChecking(false);
+    if (ok) setNeedPhone(false);
+    else setNotFound(true);
+  };
 
   useEffect(() => {
     const fetchExtras = async () => {
@@ -62,28 +89,26 @@ export default function OrderConfirmationPage() {
     };
 
     const fetchOrder = async () => {
-      const { data: orderData, error: orderError } = await publicClient.from('orders').select('*').eq('order_number', orderId).single();
-
-      if (orderError || !orderData) {
-        setNotFound(true);
-        setLoading(false);
-        return;
+      // checkout leaves a secret token in this tab; otherwise ask for the phone number
+      let token: string | null = null;
+      try {
+        token = sessionStorage.getItem(`zs-order-token:${orderId}`);
+      } catch {
+        token = null;
       }
-
-      setOrder(orderData as Order);
-
-      const { data: itemsData } = await publicClient.from('order_items').select('*').eq('order_id', orderData.id);
-      if (itemsData) setOrderItems(itemsData as OrderItem[]);
+      if (!token || !(await lookup({ token }))) setNeedPhone(true);
       setLoading(false);
     };
 
     fetchExtras();
     fetchOrder();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
   useEffect(() => {
     if (purchaseFired.current) return;
-    if (order && orderItems.length > 0 && typeof window !== 'undefined' && window.fbq) {
+    // only the fresh checkout link counts as a purchase
+    if (order?.full && orderItems.length > 0 && typeof window !== 'undefined' && window.fbq) {
       window.fbq('track', 'Purchase', {
         value: order.total,
         currency: 'PKR',
@@ -101,6 +126,23 @@ export default function OrderConfirmationPage() {
         <div className="skeleton mx-auto h-28 w-28 rounded-full" />
         <div className="skeleton mx-auto h-10 w-2/3 rounded-xl" />
         <div className="skeleton h-48 w-full rounded-[28px]" />
+      </div>
+    );
+  }
+
+  if (needPhone && !order) {
+    return (
+      <div className="container-zs max-w-md py-20 text-center">
+        <div className="mx-auto mb-4 w-fit text-6xl">📦</div>
+        <h1 className="font-display text-4xl font-semibold text-ink">Order #{orderId}</h1>
+        <p className="mt-2 font-semibold text-muted">Enter the phone number you ordered with to see this order.</p>
+        <form onSubmit={verifyPhone} className="card-zs mt-6 space-y-3 p-5 text-left">
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0300 1234567" inputMode="tel" className="input-zs" required />
+          {notFound && <p className="text-sm font-bold text-berry-700">That phone number doesn’t match this order.</p>}
+          <button type="submit" disabled={checking} className="btn-primary w-full py-3.5">
+            {checking ? 'Checking…' : 'Show my order'}
+          </button>
+        </form>
       </div>
     );
   }
@@ -175,10 +217,10 @@ export default function OrderConfirmationPage() {
             </p>
             <p className="font-extrabold text-ink">{order.customer_name}</p>
             <p className="mt-1 text-sm font-semibold leading-relaxed text-ink-soft">
-              {order.customer_address}, {order.customer_city}
+              {order.full ? `${order.customer_address}, ${order.customer_city}` : order.customer_city}
             </p>
-            <p className="mt-2 text-sm font-semibold text-ink-soft">{order.customer_phone}</p>
-            {order.customer_email && <p className="text-sm font-semibold text-ink-soft">{order.customer_email}</p>}
+            {order.full && <p className="mt-2 text-sm font-semibold text-ink-soft">{order.customer_phone}</p>}
+            {order.full && order.customer_email && <p className="text-sm font-semibold text-ink-soft">{order.customer_email}</p>}
           </div>
           <div className="card-zs p-6">
             <p className="mb-3 flex items-center gap-2 font-display text-lg font-semibold text-ink">

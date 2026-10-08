@@ -1,29 +1,10 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
+// Browser-safe client (anon key). Everything it can do is limited by the
+// Row Level Security policies in supabase/migrations.
 const publicClient = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-let serverClient: SupabaseClient | null = null;
-
-function getServerClient(): SupabaseClient {
-  if (!serverClient) {
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined');
-    }
-    serverClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
-  }
-  return serverClient;
-}
-
-export { publicClient, getServerClient };
+export { publicClient };

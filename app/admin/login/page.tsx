@@ -21,17 +21,25 @@ export default function AdminLoginPage() {
     setError('');
     setLoading(true);
 
-    const { error } = await publicClient.auth.signInWithPassword({
+    const { data, error } = await publicClient.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (error || !data.user) {
+      setError(error?.message ?? 'Sign in failed');
       setLoading(false);
-    } else {
-      router.push('/admin/dashboard');
+      return;
     }
+
+    const { data: adminRow } = await publicClient.from('admins').select('user_id').eq('user_id', data.user.id).maybeSingle();
+    if (!adminRow) {
+      await publicClient.auth.signOut();
+      setError('This account doesn’t have admin access.');
+      setLoading(false);
+      return;
+    }
+    router.push('/admin/dashboard');
   };
 
   return (

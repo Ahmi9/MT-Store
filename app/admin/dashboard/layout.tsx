@@ -16,6 +16,7 @@ import {
   MenuIcon,
   PackageIcon,
   SettingsIcon,
+  StarIcon,
   TagIcon,
   XIcon,
 } from '@/components/store/icons';
@@ -26,6 +27,7 @@ const navLinks = [
   { name: 'Products', href: '/admin/dashboard/products', icon: BagIcon },
   { name: 'Categories', href: '/admin/dashboard/categories', icon: TagIcon },
   { name: 'Coupons', href: '/admin/dashboard/coupons', icon: GiftIcon },
+  { name: 'Reviews', href: '/admin/dashboard/reviews', icon: StarIcon },
   { name: 'Settings', href: '/admin/dashboard/settings', icon: SettingsIcon },
 ];
 
@@ -33,6 +35,7 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [denied, setDenied] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -43,10 +46,14 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
       } = await publicClient.auth.getSession();
       if (!session) {
         router.push('/admin/login');
-      } else {
-        setEmail(session.user.email ?? null);
-        setLoading(false);
+        return;
       }
+      // Being signed in isn't enough — the account must be listed in `admins`.
+      // (The database enforces the same rule through RLS.)
+      const { data: adminRow } = await publicClient.from('admins').select('user_id').eq('user_id', session.user.id).maybeSingle();
+      setEmail(session.user.email ?? null);
+      setDenied(!adminRow);
+      setLoading(false);
     };
     checkUser();
   }, [router]);
@@ -67,6 +74,21 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
         <div className="flex flex-col items-center gap-3">
           <img src={BRAND.logo} alt="" className="h-16 w-16 animate-float rounded-full shadow-pop" />
           <p className="text-sm font-bold text-muted">Opening your studio…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (denied) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-blush-50 p-6">
+        <div className="card-zs max-w-sm p-8 text-center">
+          <img src={BRAND.logo} alt="" className="mx-auto mb-4 h-16 w-16 rounded-full" />
+          <h1 className="font-display text-2xl font-semibold text-ink">No admin access</h1>
+          <p className="mt-2 text-sm font-semibold text-muted">{email} isn’t an admin of this store.</p>
+          <button type="button" onClick={handleLogout} className="btn-primary mt-6 w-full py-3">
+            Sign out
+          </button>
         </div>
       </div>
     );
