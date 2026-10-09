@@ -1,4 +1,5 @@
 import { publicClient } from '@/lib/supabase';
+import { withDealPrice, type DealSettings } from '@/lib/deal';
 
 export interface Product {
   id: string;
@@ -30,7 +31,7 @@ export interface Category {
   is_active: boolean;
 }
 
-export interface SiteSettings {
+export interface SiteSettings extends DealSettings {
   store_name: string | null;
   whatsapp_number: string | null;
   hero_title: string | null;
@@ -81,7 +82,7 @@ export async function enrichProducts(products: Product[]): Promise<CatalogProduc
   if (products.length === 0) return [];
   const ids = products.map((p) => p.id);
 
-  const [categories, attrsRes, reviewsRes] = await Promise.all([
+  const [categories, attrsRes, reviewsRes, settings] = await Promise.all([
     getCategories(),
     publicClient.from('product_attributes').select('product_id').in('product_id', ids),
     publicClient
@@ -89,6 +90,7 @@ export async function enrichProducts(products: Product[]): Promise<CatalogProduc
       .select('product_id, rating')
       .in('product_id', ids)
       .eq('is_approved', true),
+    getSiteSettings(),
   ]);
 
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
@@ -103,10 +105,9 @@ export async function enrichProducts(products: Product[]): Promise<CatalogProduc
 
   return products.map((p) => {
     const list = ratings.get(p.id);
+    const priced = withDealPrice({ ...p, price: Number(p.price), original_price: p.original_price ? Number(p.original_price) : null }, settings);
     return {
-      ...p,
-      price: Number(p.price),
-      original_price: p.original_price ? Number(p.original_price) : null,
+      ...priced,
       category_name: p.category_id ? categoryName.get(p.category_id) ?? null : null,
       rating: list ? { avg: list.reduce((a, b) => a + b, 0) / list.length, count: list.length } : null,
       hasVariants: withVariants.has(p.id),

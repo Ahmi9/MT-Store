@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import { displayPkPhone } from '@/lib/phone';
 import {
   EmptyState,
   FilterTabs,
@@ -62,9 +63,12 @@ export default function OrdersPage() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // phone search works in any format: +92 300…, 0300…, 300…
+    const qPhone = q.replace(/[\s()+-]/g, '').match(/^\d{3,}$/) ? q.replace(/\D/g, '').replace(/^(00)?92/, '').replace(/^0/, '') : null;
     return orders.filter((o) => {
       if (filter !== 'all' && o.status !== filter) return false;
       if (!q) return true;
+      if (qPhone && displayPkPhone(o.customer_phone).includes(qPhone)) return true;
       return [o.order_number, o.customer_name, o.customer_phone, o.customer_city].some((v) => String(v ?? '').toLowerCase().includes(q));
     });
   }, [orders, filter, search]);
@@ -130,7 +134,7 @@ export default function OrdersPage() {
                       <Td className="font-extrabold text-ink">#{order.order_number}</Td>
                       <Td>
                         <p className="font-bold text-ink">{order.customer_name}</p>
-                        <p className="text-xs text-muted">{order.customer_phone}</p>
+                        <p className="text-xs text-muted">{displayPkPhone(order.customer_phone)}</p>
                       </Td>
                       <Td>{order.customer_city}</Td>
                       <Td className="font-extrabold text-ink">Rs. {Number(order.total).toLocaleString()}</Td>

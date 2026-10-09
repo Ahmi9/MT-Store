@@ -289,6 +289,18 @@ export default function Navbar() {
                   </>
                 )}
               </nav>
+
+              <p className="flex items-center justify-center gap-1.5 border-t border-line px-4 py-3 text-xs font-semibold text-muted">
+                Made with <HeartIcon className="h-3.5 w-3.5 text-berry-400" filled /> by
+                <a
+                  href="https://ahmimakes.site"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-extrabold text-ink-soft underline decoration-berry-300 underline-offset-4 transition-colors hover:text-berry-600"
+                >
+                  ahmimakes
+                </a>
+              </p>
             </motion.aside>
           </>
         )}

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import PageHero from '@/components/store/PageHero';
 import { getSiteSettings } from '@/lib/catalog';
 import { formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
 import { WhatsAppIcon } from '@/components/store/icons';
 
 const POLICIES = [
@@ -78,7 +79,7 @@ export default function PolicyPage({
           </div>
           {whatsapp ? (
             <a
-              href={formatWhatsAppLink(whatsapp)}
+              href={formatWhatsAppLink(whatsapp, waMessages.policy(current))}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-full bg-[#25D366] px-6 py-3 font-extrabold text-white shadow-soft"

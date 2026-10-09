@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
-import { formatWhatsAppLink } from '@/lib/utils';
 import { cartSubtotal, formatPrice, lineKey } from '@/lib/cart';
 import { useStore } from '@/components/store/StoreProvider';
+import { CITY_MAX, validateCustomer, type CustomerErrors } from '@/lib/checkout-validation';
 import PaymentMethodCard, { type PaymentMethod } from '@/components/store/PaymentMethodCard';
 import {
   CashIcon,
@@ -73,6 +73,7 @@ export default function CheckoutPage() {
   const [couponMessage, setCouponMessage] = useState({ type: '', text: '' });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<CustomerErrors>({});
   const initiateCheckoutFired = useRef(false);
 
   useEffect(() => {
@@ -114,6 +115,9 @@ export default function CheckoutPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // clear that field's error as soon as it's edited
+    const key = name === 'fullName' ? 'name' : (name as keyof CustomerErrors);
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
   };
 
   const cartPayload = cartItems.map((item) => ({
@@ -188,16 +192,30 @@ export default function CheckoutPage() {
     setCouponMessage({ type: '', text: '' });
   };
 
+  const showFirstFieldError = (problems: CustomerErrors) => {
+    const order: (keyof CustomerErrors)[] = ['name', 'phone', 'email', 'address', 'city'];
+    const first = order.find((k) => problems[k]);
+    const input = first && document.querySelector<HTMLElement>(`[name="${first === 'name' ? 'fullName' : first}"]`);
+    input?.focus({ preventScroll: true });
+    input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!formData.fullName.trim() || !formData.phone.trim() || !formData.address.trim() || !formData.city.trim()) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    if (formData.phone.replace(/\D/g, '').length < 10) {
-      setError('Please enter a valid phone number');
+    const customer = {
+      name: formData.fullName,
+      phone: formData.phone,
+      email: formData.email,
+      address: formData.address,
+      city: formData.city,
+    };
+    const problems = validateCustomer(customer);
+    if (Object.keys(problems).length) {
+      setFieldErrors(problems);
+      setError('Please fix the highlighted fields below.');
+      showFirstFieldError(problems);
       return;
     }
 
@@ -210,17 +228,17 @@ export default function CheckoutPage() {
           items: cartPayload,
           payment_type: paymentType,
           coupon_code: appliedCode,
-          customer: {
-            name: formData.fullName,
-            phone: formData.phone,
-            email: formData.email,
-            address: formData.address,
-            city: formData.city,
-          },
+          customer,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Failed to place order. Please try again.');
+      if (!res.ok) {
+        if (data.fields) {
+          setFieldErrors(data.fields);
+          showFirstFieldError(data.fields);
+        }
+        throw new Error(data.error || 'Failed to place order. Please try again.');
+      }
 
       // Written directly (no cartUpdated event) so the empty-cart redirect
       // above doesn't race the navigation to the confirmation page.
@@ -269,13 +287,13 @@ export default function CheckoutPage() {
         <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           <Section icon={UserIcon} step={1} title="Your details">
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Full name" required>
+              <Field label="Full name" error={fieldErrors.name} required>
                 <input type="text" name="fullName" value={formData.fullName} onChange={handleInputChange} required autoComplete="name" className="input-zs" placeholder="Ayesha Khan" />
               </Field>
-              <Field label="Phone number" required>
-                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required autoComplete="tel" inputMode="tel" className="input-zs" placeholder="0300 1234567" />
+              <Field label="Phone number" error={fieldErrors.phone} required>
+                <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} required autoComplete="tel" inputMode="tel" maxLength={20} className="input-zs" placeholder="03001234567" />
               </Field>
-              <Field label="Email" hint="optional" className="md:col-span-2">
+              <Field label="Email" error={fieldErrors.email} hint="optional" className="md:col-span-2">
                 <input type="email" name="email" value={formData.email} onChange={handleInputChange} autoComplete="email" className="input-zs" placeholder="ayesha@example.com" />
               </Field>
             </div>
@@ -283,7 +301,7 @@ export default function CheckoutPage() {
 
           <Section icon={MapPinIcon} step={2} title="Delivery address">
             <div className="grid gap-4 md:grid-cols-[1fr_220px]">
-              <Field label="Full address" required>
+              <Field label="Full address" error={fieldErrors.address} required>
                 <textarea
                   name="address"
                   value={formData.address}
@@ -295,8 +313,8 @@ export default function CheckoutPage() {
                   placeholder="House #, Street #, Area, Landmark"
                 />
               </Field>
-              <Field label="City" required>
-                <input type="text" name="city" value={formData.city} onChange={handleInputChange} required autoComplete="address-level2" className="input-zs" placeholder="Lahore" />
+              <Field label="City" error={fieldErrors.city} required>
+                <input type="text" name="city" value={formData.city} onChange={handleInputChange} required autoComplete="address-level2" maxLength={CITY_MAX} className="input-zs" placeholder="Lahore" />
               </Field>
             </div>
           </Section>
@@ -329,21 +347,18 @@ export default function CheckoutPage() {
                     ) : (
                       <p className="rounded-2xl bg-blush-50 p-4 text-sm font-semibold text-ink-soft">Payment details will be shared after order confirmation.</p>
                     )}
-                    {paymentMethods.length > 0 && settings?.whatsapp_number && (
-                      <a
-                        href={formatWhatsAppLink(settings.whatsapp_number)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 flex items-center gap-3 rounded-2xl bg-[#e7f9ee] p-4 transition-colors hover:bg-[#d4f5e1]"
-                      >
+                    {paymentMethods.length > 0 && (
+                      <div className="mt-4 flex items-center gap-3 rounded-2xl bg-[#e7f9ee] p-4">
                         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white">
                           <WhatsAppIcon className="h-5 w-5" />
                         </span>
                         <span className="flex-1">
-                          <span className="block text-sm font-extrabold text-ink">Send payment screenshot</span>
-                          <span className="block text-xs font-semibold text-ink-soft">We confirm advance orders on WhatsApp</span>
+                          <span className="block text-sm font-extrabold text-ink">Payment screenshot comes next</span>
+                          <span className="block text-xs font-semibold text-ink-soft">
+                            After you place the order you’ll get a WhatsApp button with your order number already filled in.
+                          </span>
                         </span>
-                      </a>
+                      </div>
                     )}
                   </div>
                 </motion.div>
@@ -449,12 +464,12 @@ export default function CheckoutPage() {
                 <Row label="Delivery" value="Free" accent />
                 <AnimatePresence>
                   {advanceDiscount > 0 && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                    <motion.div key="advance-discount" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
                       <Row label="Advance payment discount" value={`−${formatPrice(advanceDiscount)}`} accent />
                     </motion.div>
                   )}
                   {couponDiscount > 0 && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                    <motion.div key="coupon-discount" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
                       <Row label={`Coupon (${appliedCode})`} value={`−${formatPrice(couponDiscount)}`} accent />
                     </motion.div>
                   )}
@@ -552,14 +567,40 @@ function Section({ icon: Icon, step, title, children }: { icon: React.ComponentT
   );
 }
 
-function Field({ label, required, hint, className, children }: { label: string; required?: boolean; hint?: string; className?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  required,
+  hint,
+  error,
+  className,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  error?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <label className={`block ${className ?? ''}`}>
+    <label className={`block ${error ? '[&_.input-zs]:border-berry-500 [&_.input-zs]:bg-blush-50' : ''} ${className ?? ''}`}>
       <span className="mb-1.5 block text-sm font-extrabold text-ink-soft">
         {label} {required && <span className="text-berry-500">*</span>}
         {hint && <span className="font-semibold text-muted">({hint})</span>}
       </span>
       {children}
+      <AnimatePresence>
+        {error && (
+          <motion.span
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mt-1.5 block text-xs font-bold text-berry-700"
+          >
+            {error}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </label>
   );
 }

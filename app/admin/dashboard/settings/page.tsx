@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
+import { normalizeAccountNumber, normalizePkPhone } from '@/lib/phone';
 import {
   Button,
   Card,
@@ -116,8 +117,15 @@ export default function SettingsPage() {
   const dirty = saved !== null && JSON.stringify(saved) !== JSON.stringify(formData);
 
   const handleSave = async () => {
+    // any format the admin types (+92…, 03…, 3…) is saved as 03XXXXXXXXX
+    const whatsapp = formData.whatsapp_number.trim();
+    const normalized = whatsapp ? normalizePkPhone(whatsapp) : '';
+    if (normalized === null) {
+      notify('That WhatsApp number doesn’t look right — try something like 03001234567', 'error');
+      return;
+    }
     setSaving(true);
-    const { error } = await publicClient.from('site_settings').update(formData).eq('id', 1);
+    const { error } = await publicClient.from('site_settings').update({ ...formData, whatsapp_number: normalized }).eq('id', 1);
     setSaving(false);
     if (error) {
       notify(`Couldn’t save: ${error.message}`, 'error');
@@ -145,7 +153,7 @@ export default function SettingsPage() {
     const payload = {
       method_name: methodForm.method_name.trim(),
       account_title: methodForm.account_title.trim(),
-      account_number: methodForm.account_number.trim(),
+      account_number: normalizeAccountNumber(methodForm.method_name, methodForm.account_number),
       iban: methodForm.iban.trim() || null,
     };
     setMethodSaving(true);
@@ -197,7 +205,7 @@ export default function SettingsPage() {
             <Field label="Store name" hint="Shown in the admin; the storefront uses the Zestore.pk logo">
               <input className="admin-input" value={formData.store_name} onChange={(e) => set('store_name', e.target.value)} placeholder="Zestore.pk" />
             </Field>
-            <Field label="WhatsApp number" hint="e.g. 03001234567 — used for every WhatsApp button on the store">
+            <Field label="WhatsApp number" hint="Any format works (+92 300…, 0300…, 300…) — saved as 03001234567 and used for every WhatsApp button">
               <input className="admin-input" value={formData.whatsapp_number} onChange={(e) => set('whatsapp_number', e.target.value)} placeholder="03001234567" inputMode="tel" />
             </Field>
           </div>

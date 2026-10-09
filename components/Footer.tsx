@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { getCategories, getSiteSettings, type Category } from '@/lib/catalog';
 import { formatWhatsAppDisplay, formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
 import { BRAND } from '@/lib/brand';
 import { HeartIcon, WhatsAppIcon } from '@/components/store/icons';
 
@@ -49,7 +50,7 @@ export default function Footer() {
             </p>
             {whatsapp && (
               <a
-                href={formatWhatsAppLink(whatsapp)}
+                href={formatWhatsAppLink(whatsapp, waMessages.footer())}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-6 inline-flex items-center gap-3 rounded-full bg-white/10 py-2 pl-2 pr-5 text-sm font-bold transition-colors hover:bg-[#25D366]"
@@ -96,7 +97,15 @@ export default function Footer() {
             © {new Date().getFullYear()} {BRAND.name}. All rights reserved.
           </p>
           <p className="flex items-center gap-1.5">
-            Made with <HeartIcon className="h-3.5 w-3.5 text-berry-400" filled /> in Pakistan
+            Made with <HeartIcon className="h-3.5 w-3.5 text-berry-400" filled /> in Pakistan by
+            <a
+              href="https://ahmimakes.site"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-extrabold text-white/80 underline decoration-berry-400/60 underline-offset-4 transition-colors hover:text-berry-300"
+            >
+              ahmimakes
+            </a>
           </p>
         </div>
       </div>

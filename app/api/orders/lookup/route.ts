@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase-server';
 import { clientIp, rateLimited } from '@/lib/rate-limit';
+import { normalizePkPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
-const digits = (s: unknown) => String(s ?? '').replace(/\D/g, '').slice(-10);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -19,8 +19,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const orderNumber = typeof body.order_number === 'string' ? body.order_number.trim().replace(/^#/, '').slice(0, 40) : '';
   const token = typeof body.token === 'string' && UUID.test(body.token) ? body.token : null;
-  const phone = digits(body.phone);
-  if (!orderNumber || (!token && phone.length < 10)) {
+  // whatever format the customer types, compare as 03XXXXXXXXX
+  const phone = typeof body.phone === 'string' ? normalizePkPhone(body.phone) : null;
+  if (!orderNumber || (!token && !phone)) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
 
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   const full = !!order && !!token && order.lookup_token === token;
-  const tracking = !!order && !full && phone.length >= 10 && digits(order.customer_phone) === phone;
+  const tracking = !!order && !full && !!phone && normalizePkPhone(order.customer_phone) === phone;
   if (!order || (!full && !tracking)) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     full
-      ? { ...base, full: true, customer_phone: order.customer_phone, customer_email: order.customer_email, customer_address: order.customer_address }
+      ? { ...base, full: true, customer_phone: normalizePkPhone(order.customer_phone) ?? order.customer_phone, customer_email: order.customer_email, customer_address: order.customer_address }
       : { ...base, full: false }
   );
 }

@@ -401,10 +401,12 @@ begin
 
   -- customer details
   if jsonb_typeof(cust) is distinct from 'object'
+     -- name 2–100; mobile 3XXXXXXXXX or 03XXXXXXXXX; address just not empty;
+     -- city up to 30 (longest city, "Khairpur Nathan Shah", is 20)
      or char_length(btrim(coalesce(cust ->> 'name', ''))) not between 2 and 100
-     or char_length(regexp_replace(coalesce(cust ->> 'phone', ''), '[^0-9]', '', 'g')) not between 10 and 15
-     or char_length(btrim(coalesce(cust ->> 'address', ''))) not between 5 and 500
-     or char_length(btrim(coalesce(cust ->> 'city', ''))) not between 2 and 80
+     or regexp_replace(coalesce(cust ->> 'phone', ''), '[^0-9]', '', 'g') !~ '^(3[0-9]{9}|03[0-9]{9})$'
+     or btrim(coalesce(cust ->> 'address', '')) = ''
+     or char_length(btrim(coalesce(cust ->> 'city', ''))) not between 1 and 30
      or char_length(coalesce(cust ->> 'email', '')) > 200 then
     raise exception using message = 'invalid_customer';
   end if;

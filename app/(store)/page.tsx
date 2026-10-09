@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
@@ -13,8 +13,11 @@ import {
   type CatalogProduct,
   type Category,
   type Product,
+  type SiteSettings,
 } from '@/lib/catalog';
-import { discountPercent, formatPrice } from '@/lib/cart';
+import { pickDealProduct } from '@/lib/deal';
+import DealSpotlight from '@/components/store/DealSpotlight';
+import { formatPrice } from '@/lib/cart';
 import { BRAND } from '@/lib/brand';
 import ProductCard, { ProductCardSkeleton } from '@/components/store/ProductCard';
 import { useStore } from '@/components/store/StoreProvider';
@@ -23,7 +26,6 @@ import {
   BagIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ClockIcon,
   GiftIcon,
   HeartIcon,
   ReturnIcon,
@@ -59,6 +61,9 @@ export default function HomePage() {
   const [hero, setHero] = useState<{ title: string; subtitle: string }>({ title: '', subtitle: '' });
   const [advanceDiscount, setAdvanceDiscount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [dealSettings, setDealSettings] = useState<SiteSettings | null>(null);
+  const [dealExpired, setDealExpired] = useState(false);
+  const { addToCart } = useStore();
 
   useEffect(() => {
     (async () => {
@@ -77,6 +82,7 @@ export default function HomePage() {
       setProducts(await enrichProducts((data as Product[]) ?? []));
       setCategories(cats);
       setReviews((reviewRows as Review[]) ?? []);
+      setDealSettings(settings);
       setHero({ title: settings?.hero_title?.trim() || '', subtitle: settings?.hero_subtitle?.trim() || '' });
       if (settings?.advance_payment_discount_enabled) setAdvanceDiscount(Number(settings.advance_payment_discount_amount) || 200);
       setLoading(false);
@@ -88,13 +94,8 @@ export default function HomePage() {
     return (f.length ? f : products).slice(0, 8);
   }, [products]);
 
-  const deal = useMemo(
-    () =>
-      [...products]
-        .filter((p) => (p.images?.length ?? 0) > 0 && discountPercent(p.price, p.original_price) > 0)
-        .sort((a, b) => discountPercent(b.price, b.original_price) - discountPercent(a.price, a.original_price))[0] ?? null,
-    [products]
-  );
+  const deal = useMemo(() => (dealExpired ? null : pickDealProduct(products, dealSettings)), [products, dealSettings, dealExpired]);
+  const expireDeal = useCallback(() => setDealExpired(true), []);
 
   const heroProducts = useMemo(() => {
     const withImg = featured.filter((p) => p.images?.[0]);
@@ -189,7 +190,14 @@ export default function HomePage() {
         )}
       </section>
 
-      {deal && <DealSpotlight product={deal} />}
+      {deal && (
+        <DealSpotlight
+          product={deal}
+          settings={dealSettings}
+          onExpire={expireDeal}
+          onAdd={() => addToCart({ id: deal.id, name: deal.name, price: deal.price, image: deal.images?.[0] ?? null, slug: deal.slug })}
+        />
+      )}
 
       {products.length > 4 && <NewArrivals products={products.slice(0, 10)} />}
 
@@ -486,92 +494,6 @@ function SectionHeading({ eyebrow, title, href, cta }: { eyebrow: string; title:
         </Link>
       )}
     </div>
-  );
-}
-
-function DealSpotlight({ product }: { product: CatalogProduct }) {
-  const { addToCart } = useStore();
-  const [left, setLeft] = useState<number | null>(null);
-  const off = discountPercent(product.price, product.original_price);
-
-  // Daily deal resets at local midnight
-  useEffect(() => {
-    const tick = () => {
-      const end = new Date();
-      end.setHours(24, 0, 0, 0);
-      setLeft(Math.max(0, end.getTime() - Date.now()));
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const parts = left === null ? ['--', '--', '--'] : [left / 36e5, (left / 6e4) % 60, (left / 1e3) % 60].map((n) => String(Math.floor(n)).padStart(2, '0'));
-
-  return (
-    <section className="container-zs py-16 md:py-20">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        whileInView={{ opacity: 1, scale: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.6 }}
-        className="relative grid overflow-hidden rounded-[36px] bg-ink md:grid-cols-2"
-      >
-        <div className="absolute -left-20 -top-20 h-80 w-80 animate-blob bg-berry-500/40 blur-3xl" />
-        <div className="relative z-10 order-2 p-7 md:order-1 md:p-12">
-          <span className="chip bg-berry-400 text-white">
-            <ClockIcon className="h-3.5 w-3.5" /> Deal of the day
-          </span>
-          <h2 className="mt-4 font-display text-3xl font-semibold leading-tight text-white md:text-5xl">{product.name}</h2>
-          <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-2">
-            <span className="whitespace-nowrap font-display text-3xl font-semibold text-berry-400 md:text-4xl">{formatPrice(product.price)}</span>
-            <span className="whitespace-nowrap text-lg font-bold text-white/40 line-through">{formatPrice(product.original_price!)}</span>
-            <span className="chip bg-white text-berry-600">Save {off}%</span>
-          </div>
-
-          <div className="mt-7 flex gap-2 md:gap-3">
-            {parts.map((v, i) => (
-              <div key={i} className="w-[72px] rounded-2xl bg-white/10 py-3 text-center backdrop-blur md:w-20">
-                <motion.p key={v} initial={{ y: -8, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="font-display text-3xl font-semibold tabular-nums text-white">
-                  {v}
-                </motion.p>
-                <p className="text-[10px] font-extrabold uppercase tracking-widest text-white/50">{['hours', 'mins', 'secs'][i]}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {product.hasVariants ? (
-              <Link href={`/products/${product.slug}`} className="btn-primary px-7 py-3.5">
-                Choose options <ArrowRightIcon className="h-5 w-5" />
-              </Link>
-            ) : (
-              <button
-                type="button"
-                onClick={() => addToCart({ id: product.id, name: product.name, price: product.price, image: product.images?.[0] ?? null, slug: product.slug })}
-                className="btn-primary px-7 py-3.5"
-              >
-                <BagIcon className="h-5 w-5" /> Grab the deal
-              </button>
-            )}
-            <Link href={`/products/${product.slug}`} className="inline-flex items-center gap-2 rounded-full px-5 py-3.5 font-extrabold text-white/80 hover:text-white">
-              View details
-            </Link>
-          </div>
-        </div>
-        <div className="relative order-1 min-h-[280px] md:order-2">
-          <img src={product.images![0]} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-ink via-transparent md:bg-gradient-to-r" />
-          <motion.span
-            animate={{ rotate: [0, 8, -8, 0], scale: [1, 1.06, 1] }}
-            transition={{ duration: 3, repeat: Infinity }}
-            className="absolute right-5 top-5 flex h-20 w-20 items-center justify-center rounded-full bg-berry-400 text-center font-display text-xl font-semibold leading-none text-white shadow-pop"
-          >
-            -{off}%
-          </motion.span>
-        </div>
-      </motion.div>
-    </section>
   );
 }
 

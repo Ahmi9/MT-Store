@@ -10,6 +10,7 @@ import { AdminToastProvider } from '@/components/admin/ui';
 import MfaGate from '@/components/admin/MfaGate';
 import {
   BagIcon,
+  ClockIcon,
   ExternalIcon,
   GiftIcon,
   GridIcon,
@@ -28,6 +29,7 @@ const navLinks = [
   { name: 'Products', href: '/admin/dashboard/products', icon: BagIcon },
   { name: 'Categories', href: '/admin/dashboard/categories', icon: TagIcon },
   { name: 'Coupons', href: '/admin/dashboard/coupons', icon: GiftIcon },
+  { name: 'Deal of the day', href: '/admin/dashboard/deal', icon: ClockIcon },
   { name: 'Reviews', href: '/admin/dashboard/reviews', icon: StarIcon },
   { name: 'Settings', href: '/admin/dashboard/settings', icon: SettingsIcon },
 ];

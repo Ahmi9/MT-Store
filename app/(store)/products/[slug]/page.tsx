@@ -9,11 +9,13 @@ import {
   PRODUCT_FIELDS,
   enrichProducts,
   getCategories,
+  getSiteSettings,
   type CatalogProduct,
   type Category,
   type Product,
 } from '@/lib/catalog';
 import { discountPercent, formatPrice } from '@/lib/cart';
+import { withDealPrice } from '@/lib/deal';
 import { useStore } from '@/components/store/StoreProvider';
 import { Stepper } from '@/components/store/CartDrawer';
 import ProductCard from '@/components/store/ProductCard';
@@ -75,7 +77,10 @@ export default function ProductPage() {
         setNotFound(true);
         return;
       }
-      const p = { ...(data as Product), price: Number(data.price), original_price: data.original_price ? Number(data.original_price) : null };
+      const p = withDealPrice(
+        { ...(data as Product), price: Number(data.price), original_price: data.original_price ? Number(data.original_price) : null },
+        await getSiteSettings()
+      );
       setProduct(p);
 
       const cats = await getCategories();

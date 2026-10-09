@@ -5,6 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
 import { formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
+import { displayPkPhone } from '@/lib/phone';
 import { Button, Card, PageHeader, Pill, STATUS_TONE, useAdminToast } from '@/components/admin/ui';
 import {
   CashIcon,
@@ -116,9 +118,17 @@ export default function OrderDetailPage() {
     );
   }
 
-  const whatsappLink = `${formatWhatsAppLink(order.customer_phone)}?text=${encodeURIComponent(
-    `Hi ${order.customer_name}, your order ${order.order_number} status is ${order.status}`
-  )}`;
+  const whatsappLink = formatWhatsAppLink(
+    order.customer_phone,
+    waMessages.adminOrder({
+      customer_name: order.customer_name,
+      order_number: order.order_number,
+      status: order.status,
+      total: Number(order.total),
+      payment_type: order.payment_type,
+      tracking: order.postex_tracking_number,
+    })
+  );
   const created = new Date(order.created_at);
   const currentStep = FLOW.findIndex((f) => f.value === order.status);
   const cancelled = order.status === 'cancelled';
@@ -234,7 +244,7 @@ export default function OrderDetailPage() {
           <Card title="Customer" icon={UserIcon} delay={0.1}>
             <div className="grid gap-4 sm:grid-cols-2">
               <Info label="Name" value={order.customer_name} />
-              <Info label="Phone" value={order.customer_phone} />
+              <Info label="Phone" value={displayPkPhone(order.customer_phone)} />
               <Info label="Email" value={order.customer_email || '—'} />
               <Info label="City" value={order.customer_city} />
               <Info label="Address" value={order.customer_address} className="sm:col-span-2" />

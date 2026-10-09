@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
-import { getCategories, type Category, type Product } from '@/lib/catalog';
+import { getCategories, getSiteSettings, type Category, type Product } from '@/lib/catalog';
+import { withDealPrice } from '@/lib/deal';
 import { formatPrice } from '@/lib/cart';
 import { useStore } from '@/components/store/StoreProvider';
 import { ArrowRightIcon, SearchIcon, SparkleIcon, XIcon } from '@/components/store/icons';
@@ -59,7 +60,8 @@ export default function SearchOverlay() {
         .eq('is_active', true)
         .ilike('name', `%${q.replace(/[%_,()]/g, ' ')}%`)
         .limit(6);
-      setResults((data as Product[]) ?? []);
+      const settings = await getSiteSettings();
+      setResults(((data as Product[]) ?? []).map((p) => withDealPrice({ ...p, price: Number(p.price), original_price: p.original_price ? Number(p.original_price) : null }, settings)));
       setSearching(false);
     }, 220);
     return () => clearTimeout(t);

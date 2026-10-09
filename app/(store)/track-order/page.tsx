@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { getSiteSettings } from '@/lib/catalog';
 import { formatPrice } from '@/lib/cart';
 import { formatWhatsAppDisplay, formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
+import { normalizePkPhone } from '@/lib/phone';
 import PageHero from '@/components/store/PageHero';
 import { CheckIcon, GiftIcon, MapPinIcon, PackageIcon, SearchIcon, TruckIcon, WhatsAppIcon, XIcon } from '@/components/store/icons';
 
@@ -26,14 +28,12 @@ const FLOW = [
   { key: 'delivered', label: 'Delivered', icon: MapPinIcon },
 ];
 
-const digits = (s: string) => s.replace(/\D/g, '').slice(-10);
-
 export default function TrackOrderPage() {
   const [orderNumber, setOrderNumber] = useState('');
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState<string | null>(null);
   const [result, setResult] = useState<TrackedOrder | null>(null);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'notfound' | 'limited'>('idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'notfound' | 'limited' | 'badphone'>('idle');
 
   useEffect(() => {
     getSiteSettings().then((s) => setWhatsapp(s?.whatsapp_number ?? null));
@@ -42,7 +42,12 @@ export default function TrackOrderPage() {
   const track = async (e: React.FormEvent) => {
     e.preventDefault();
     const number = orderNumber.trim().replace(/^#/, '');
-    if (!number || digits(phone).length < 10) return;
+    if (!number) return;
+    // any format works (+92…, 03…, 3…); the box keeps what the customer typed
+    if (!normalizePkPhone(phone)) {
+      setStatus('badphone');
+      return;
+    }
     setStatus('loading');
     setResult(null);
     // the server checks the phone number and only returns tracking details
@@ -86,6 +91,11 @@ export default function TrackOrderPage() {
           {status === 'limited' && (
             <motion.p key="lim" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6 rounded-[24px] bg-blush-100 p-5 text-center font-bold text-berry-700">
               Too many tries — please wait a few minutes and try again.
+            </motion.p>
+          )}
+          {status === 'badphone' && (
+            <motion.p key="bad" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-6 rounded-[24px] bg-blush-100 p-5 text-center font-bold text-berry-700">
+              That doesn’t look like a Pakistani mobile number — try something like 03001234567.
             </motion.p>
           )}
           {status === 'notfound' && (
@@ -179,7 +189,7 @@ export default function TrackOrderPage() {
 
         {whatsapp && (
           <a
-            href={formatWhatsAppLink(whatsapp)}
+            href={formatWhatsAppLink(whatsapp, waMessages.trackOrder(result?.order_number, result?.status))}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-6 flex items-center gap-4 rounded-[24px] bg-[#e7f9ee] p-5 transition-transform hover:-translate-y-0.5"

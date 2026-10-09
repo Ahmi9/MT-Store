@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import PageHero from '@/components/store/PageHero';
 import { getSiteSettings } from '@/lib/catalog';
 import { formatWhatsAppDisplay, formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
 import { BagIcon, ClockIcon, PackageIcon, ReturnIcon, WhatsAppIcon } from '@/components/store/icons';
 
 export default function ContactPage() {
@@ -42,7 +43,7 @@ export default function ContactPage() {
             <>
               <p className="relative mt-2 font-display text-3xl font-semibold md:text-5xl">{formatWhatsAppDisplay(whatsapp)}</p>
               <a
-                href={formatWhatsAppLink(whatsapp)}
+                href={formatWhatsAppLink(whatsapp, waMessages.contact())}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="relative mt-7 inline-flex items-center gap-2 rounded-full bg-[#25D366] px-8 py-4 font-extrabold text-white shadow-pop transition-transform hover:-translate-y-1"

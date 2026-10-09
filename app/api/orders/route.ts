@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { CheckoutError, parseItems, runCheckout } from '@/lib/checkout-server';
 import { clientIp, rateLimited } from '@/lib/rate-limit';
+import { validateCustomer } from '@/lib/checkout-validation';
+import { normalizePkPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,18 +17,28 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const customer = (body.customer ?? {}) as Record<string, unknown>;
+    const fields = {
+      name: text(customer.name, 200),
+      phone: text(customer.phone, 40),
+      email: text(customer.email, 200),
+      address: typeof customer.address === 'string' ? customer.address.trim() : '', // no length limit
+      city: text(customer.city, 200), // validateCustomer enforces the real limit
+    };
+    const fieldErrors = validateCustomer(fields);
+    if (Object.keys(fieldErrors).length) {
+      return NextResponse.json(
+        { error: Object.values(fieldErrors)[0], code: 'invalid_customer', fields: fieldErrors },
+        { status: 400 }
+      );
+    }
+    // any format the customer typed is saved as 03XXXXXXXXX
+    fields.phone = normalizePkPhone(fields.phone)!;
     const result = (await runCheckout(
       {
         items: parseItems(body.items),
         payment_type: body.payment_type === 'advance' ? 'advance' : 'cod',
         coupon_code: typeof body.coupon_code === 'string' ? body.coupon_code.slice(0, 40) : null,
-        customer: {
-          name: text(customer.name, 100),
-          phone: text(customer.phone, 30),
-          email: text(customer.email, 200),
-          address: text(customer.address, 500),
-          city: text(customer.city, 80),
-        },
+        customer: fields,
       },
       true
     )) as { order_number: string; token: string; total: number };

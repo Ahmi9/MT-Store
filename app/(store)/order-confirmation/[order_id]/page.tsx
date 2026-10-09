@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { publicClient } from '@/lib/supabase';
 import { formatWhatsAppLink } from '@/lib/utils';
+import { waMessages } from '@/lib/whatsapp-messages';
 import { formatPrice } from '@/lib/cart';
 import PaymentMethodCard, { type PaymentMethod } from '@/components/store/PaymentMethodCard';
 import { ArrowRightIcon, CashIcon, CopyIcon, GiftIcon, MapPinIcon, PackageIcon, TruckIcon, WhatsAppIcon } from '@/components/store/icons';
@@ -255,6 +256,22 @@ export default function OrderConfirmationPage() {
                 <PaymentMethodCard key={method.id} method={method} />
               ))}
             </div>
+            {whatsapp && (
+              <a
+                href={formatWhatsAppLink(whatsapp, waMessages.orderPlaced(order.order_number, Number(order.total), true))}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 flex items-center gap-3 rounded-2xl bg-[#e7f9ee] p-4 transition-colors hover:bg-[#d4f5e1]"
+              >
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#25D366] text-white">
+                  <WhatsAppIcon className="h-5 w-5" />
+                </span>
+                <span className="flex-1">
+                  <span className="block text-sm font-extrabold text-ink">Send payment screenshot</span>
+                  <span className="block text-xs font-semibold text-ink-soft">Opens WhatsApp with order #{order.order_number} already written</span>
+                </span>
+              </a>
+            )}
           </motion.div>
         )}
 
@@ -291,7 +308,7 @@ export default function OrderConfirmationPage() {
         <div className="mt-8 grid gap-3 sm:grid-cols-2">
           {whatsapp && (
             <a
-              href={formatWhatsAppLink(whatsapp)}
+              href={formatWhatsAppLink(whatsapp, waMessages.orderPlaced(order.order_number, Number(order.total), order.payment_type === 'advance'))}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-[#25D366] py-4 font-extrabold text-white shadow-soft transition-transform hover:-translate-y-0.5"
