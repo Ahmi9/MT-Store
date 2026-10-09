@@ -15,7 +15,6 @@ import {
   HeartIcon,
   MenuIcon,
   SearchIcon,
-  SparkleIcon,
   XIcon,
 } from '@/components/store/icons';
 
@@ -56,7 +55,6 @@ export default function Navbar() {
   const links = [
     { href: '/', label: 'Home' },
     { href: '/products', label: 'Shop all' },
-    { href: '/products?filter=deals', label: 'Deals' },
     { href: '/track-order', label: 'Track order' },
   ];
 
@@ -147,7 +145,6 @@ export default function Navbar() {
 
             {links.slice(2).map((l) => (
               <NavLink key={l.href} href={l.href} active={isActive(l.href)}>
-                {l.href.includes('deals') && <SparkleIcon className="h-3.5 w-3.5 text-berry-500" />}
                 {l.label}
               </NavLink>
             ))}

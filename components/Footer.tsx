@@ -64,7 +64,6 @@ export default function Footer() {
 
           <FooterColumn title="Shop" className="md:col-span-3">
             <FooterLink href="/products">All products</FooterLink>
-            <FooterLink href="/products?filter=deals">Deals</FooterLink>
             {categories.map((c) => (
               <FooterLink key={c.id} href={`/products?category=${c.slug}`}>
                 {c.name}

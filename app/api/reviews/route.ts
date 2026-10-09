@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const { error } = await db.from('product_reviews').insert({
     product_id: productId,
     customer_name: name,
-    customer_city: city || null,
+    customer_city: city, // column is NOT NULL; empty string when not given
     review_text: review,
     rating,
     is_approved: false,

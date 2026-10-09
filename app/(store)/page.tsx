@@ -124,7 +124,7 @@ export default function HomePage() {
 
       {/* Categories */}
       {(loading || categoryCards.length > 0) && (
-        <section className="container-zs py-16 md:py-20">
+        <section id="categories" className="container-zs scroll-mt-24 py-16 md:py-20">
           <SectionHeading eyebrow="Shop by vibe" title="Find your favourites" href="/products" cta="All products" />
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-6">
             {loading
@@ -329,9 +329,9 @@ function Hero({
             <Link href="/products" className="btn-primary px-8 py-4 text-base">
               Shop the collection <ArrowRightIcon className="h-5 w-5" />
             </Link>
-            <Link href="/products?filter=deals" className="btn-ghost bg-white/60 px-7 py-4 text-base">
-              Today’s deals
-            </Link>
+            <a href="#categories" className="btn-ghost bg-white/60 px-7 py-4 text-base">
+              Browse categories
+            </a>
           </motion.div>
 
           <motion.div
